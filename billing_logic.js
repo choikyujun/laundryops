@@ -136,34 +136,3 @@ window.checkStaffLimit = async function(factory) {
     
     return true;
 }
-window.checkHotelLimit = async function(factory) {
-    let f = factory;
-    if (!f || typeof f.plan === 'undefined') {
-        const { data } = await window.mySupabase.from('factories').select('plan').eq('id', currentFactoryId).maybeSingle();
-        f = data;
-    }
-    
-    const planLevel = getFactoryPlanLevel(f);
-    if (planLevel >= 3) return true; // 엔터프라이즈(3) 이상은 무제한
-    
-    const { count } = await window.mySupabase.from('hotels').select('id', { count: 'exact', head: true })
-        .eq('factory_id', currentFactoryId);
-    
-    // 라이트 요금제 제한: 20개
-    if (planLevel === 1 && (count || 0) >= 20) {
-        alert('라이트 요금제는 거래처를 20개까지만 등록할 수 있습니다. \n [요금제 업그레이드] 해주세요');
-        openModal('paymentModal');
-        if (typeof window.loadAdminPayment === 'function') window.loadAdminPayment();
-        return false;
-    }
-    
-    // 비즈니스 요금제 제한: 50개
-    if (planLevel === 2 && (count || 0) >= 50) {
-        alert('비즈니스 요금제는 거래처를 50개까지만 등록할 수 있습니다. \n [요금제 업그레이드] 해주세요');
-        openModal('paymentModal');
-        if (typeof window.loadAdminPayment === 'function') window.loadAdminPayment();
-        return false;
-    }
-    
-    return true;
-}
