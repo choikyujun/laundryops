@@ -1,8 +1,0 @@
-.vercel
-.DS_Store
-dist/
-backup/
-old/
-archive/
-*.xcworkspace
-node_modules/
