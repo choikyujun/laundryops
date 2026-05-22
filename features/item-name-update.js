@@ -1,11 +1,14 @@
 // features/item-name-update.js
-// 1. 품목명 인라인 편집 + invoice_items cascade 업데이트
-// 2. 드래그 앤 드롭 순서 변경 (sort_order 저장)
+// 1. 품목명 인라인 편집 + invoice_items cascade 업데이트 (호텔 단가)
+// 2. 기본 단가 품목명 인라인 편집
+// 3. 드래그 앤 드롭 순서 변경 (hotel_item_prices / factory_default_prices)
 
 (function() {
     'use strict';
 
-    /* ───────────── CASCADE UPDATE ───────────── */
+    /* ─────────────────────────────────────────
+       CASCADE UPDATE (호텔 단가 → invoice_items)
+    ───────────────────────────────────────── */
 
     window.updateItemNameWithCascade = async function(itemId, oldName, newName) {
         newName = newName.trim();
@@ -19,10 +22,7 @@
             .eq('id', itemId)
             .single();
 
-        if (priceErr || !priceRow) {
-            console.error('[item-name-update] hotel_item_prices 조회 실패', priceErr);
-            return { error: priceErr };
-        }
+        if (priceErr || !priceRow) return { error: priceErr };
 
         const hotelId = priceRow.hotel_id;
 
@@ -31,46 +31,32 @@
             .update({ name: newName })
             .eq('id', itemId);
 
-        if (updateErr) {
-            console.error('[item-name-update] hotel_item_prices 업데이트 실패', updateErr);
-            return { error: updateErr };
-        }
+        if (updateErr) return { error: updateErr };
 
         const { data: invoices, error: invErr } = await db
-            .from('invoices')
-            .select('id')
-            .eq('hotel_id', hotelId);
+            .from('invoices').select('id').eq('hotel_id', hotelId);
 
-        if (invErr) {
-            console.error('[item-name-update] invoices 조회 실패', invErr);
-            return { error: invErr };
-        }
-
+        if (invErr) return { error: invErr };
         if (!invoices || invoices.length === 0) return { updated: 0 };
-
-        const invoiceIds = invoices.map(inv => inv.id);
 
         const { data: updatedItems, error: cascadeErr } = await db
             .from('invoice_items')
             .update({ name: newName })
-            .in('invoice_id', invoiceIds)
+            .in('invoice_id', invoices.map(i => i.id))
             .eq('name', oldName)
             .select('id');
 
-        if (cascadeErr) {
-            console.error('[item-name-update] invoice_items cascade 실패', cascadeErr);
-            return { error: cascadeErr };
-        }
+        if (cascadeErr) return { error: cascadeErr };
 
         const count = updatedItems ? updatedItems.length : 0;
-        console.log(`[item-name-update] "${oldName}" → "${newName}" 완료. invoice_items ${count}건 업데이트`);
+        console.log(`[item-name] "${oldName}" → "${newName}", invoice_items ${count}건`);
         return { updated: count };
     };
 
+    // 호텔 단가 품목명 저장
     window._itemNameSave = async function(itemId, inputEl) {
         const oldName = inputEl.dataset.oldName;
         const newName = inputEl.value.trim();
-
         if (!newName) { alert('품목명을 입력해주세요.'); inputEl.value = oldName; return; }
         if (newName === oldName) return;
 
@@ -88,21 +74,58 @@
 
         inputEl.dataset.oldName = newName;
         if (btn) { btn.disabled = false; btn.textContent = '저장'; }
-
         if (typeof window.loadHotelPriceList === 'function') window.loadHotelPriceList();
         else if (typeof window.loadSimplePriceList === 'function') window.loadSimplePriceList();
 
-        const msg = result.updated > 0
+        alert(result.updated > 0
             ? `품목명이 변경되었습니다.\n기존 청구서 품목 ${result.updated}건도 업데이트되었습니다.`
-            : '품목명이 변경되었습니다.';
-        alert(msg);
+            : '품목명이 변경되었습니다.');
     };
 
-    /* ───────────── DRAG & DROP SORT ───────────── */
+    /* ─────────────────────────────────────────
+       기본 단가 품목명 저장 (cascade 없음)
+    ───────────────────────────────────────── */
 
-    const DRAG_HANDLE_STYLE = 'cursor:grab; padding:4px 8px; color:#94a3b8; font-size:16px; user-select:none; touch-action:none;';
+    window._defaultItemNameSave = async function(itemId, inputEl) {
+        const oldName = inputEl.dataset.oldName;
+        const newName = inputEl.value.trim();
+        if (!newName) { alert('품목명을 입력해주세요.'); inputEl.value = oldName; return; }
+        if (newName === oldName) return;
 
-    function initDragSort(tbody) {
+        const btn = inputEl.nextElementSibling;
+        if (btn) { btn.disabled = true; btn.textContent = '저장중...'; }
+
+        const { error } = await window.mySupabase
+            .from('factory_default_prices')
+            .update({ name: newName })
+            .eq('id', itemId);
+
+        if (error) {
+            alert('저장 실패: ' + (error.message || '오류'));
+            inputEl.value = oldName;
+            if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+            return;
+        }
+
+        inputEl.dataset.oldName = newName;
+        if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+        alert('품목명이 변경되었습니다.');
+    };
+
+    /* ─────────────────────────────────────────
+       DRAG & DROP (공통)
+    ───────────────────────────────────────── */
+
+    if (!document.getElementById('drag-sort-style')) {
+        const style = document.createElement('style');
+        style.id = 'drag-sort-style';
+        style.textContent = 'tr.drag-over td { background: #dbeafe !important; }';
+        document.head.appendChild(style);
+    }
+
+    const HANDLE_STYLE = 'cursor:grab; padding:4px 10px; color:#94a3b8; font-size:16px; user-select:none;';
+
+    function initDragSort(tbody, saveFn) {
         let draggingRow = null;
 
         tbody.addEventListener('dragstart', e => {
@@ -114,8 +137,7 @@
         });
 
         tbody.addEventListener('dragend', e => {
-            const row = e.target.closest('tr[data-item-id]');
-            if (row) row.style.opacity = '';
+            if (draggingRow) draggingRow.style.opacity = '';
             tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
             draggingRow = null;
         });
@@ -133,101 +155,127 @@
             e.preventDefault();
             const targetRow = e.target.closest('tr[data-item-id]');
             if (!targetRow || !draggingRow || targetRow === draggingRow) return;
-
-            // DOM 재정렬
             const rows = [...tbody.querySelectorAll('tr[data-item-id]')];
-            const fromIdx = rows.indexOf(draggingRow);
-            const toIdx = rows.indexOf(targetRow);
-            if (fromIdx < toIdx) {
-                targetRow.after(draggingRow);
-            } else {
-                targetRow.before(draggingRow);
-            }
-
-            // sort_order 일괄 저장
+            if (rows.indexOf(draggingRow) < rows.indexOf(targetRow)) targetRow.after(draggingRow);
+            else targetRow.before(draggingRow);
             const orderedIds = [...tbody.querySelectorAll('tr[data-item-id]')].map(r => r.dataset.itemId);
-            await saveSortOrder(orderedIds);
+            await saveFn(orderedIds);
         });
-
-        // 드래그 오버 강조 스타일 (한 번만 주입)
-        if (!document.getElementById('drag-sort-style')) {
-            const style = document.createElement('style');
-            style.id = 'drag-sort-style';
-            style.textContent = 'tr.drag-over td { background: #dbeafe !important; }';
-            document.head.appendChild(style);
-        }
     }
 
-    async function saveSortOrder(orderedIds) {
-        const db = window.mySupabase;
-        const updates = orderedIds.map((id, idx) =>
-            db.from('hotel_item_prices').update({ sort_order: idx }).eq('id', id)
-        );
-        await Promise.all(updates);
-        console.log('[item-sort] sort_order 저장 완료', orderedIds.length, '건');
+    async function saveHotelSortOrder(orderedIds) {
+        await Promise.all(orderedIds.map((id, idx) =>
+            window.mySupabase.from('hotel_item_prices').update({ sort_order: idx }).eq('id', id)
+        ));
     }
 
-    /* ───────────── ROW POST-PROCESSING ───────────── */
-
-    function extractItemId(row, deletePattern) {
-        const delBtn = row.querySelector(`button[onclick*="${deletePattern}"]`);
-        if (!delBtn) return null;
-        const match = delBtn.getAttribute('onclick').match(new RegExp(`${deletePattern}\\(['"]([^'"]+)['"]\\)`));
-        return match ? match[1] : null;
+    async function saveDefaultSortOrder(orderedIds) {
+        await Promise.all(orderedIds.map((id, idx) =>
+            window.mySupabase.from('factory_default_prices').update({ sort_order: idx }).eq('id', id)
+        ));
     }
 
-    function injectRowUI(tbody, deletePattern) {
-        let dragInitialized = false;
+    /* ─────────────────────────────────────────
+       ROW INJECTION — 호텔 단가 (핸들 셀 삽입)
+    ───────────────────────────────────────── */
+
+    function injectHotelRowUI(tbody, deletePattern, saveSortFn) {
+        let any = false;
 
         tbody.querySelectorAll('tr').forEach(row => {
             const cells = row.querySelectorAll('td');
             if (cells.length < 2) return;
 
-            const itemId = extractItemId(row, deletePattern);
-            if (!itemId) return;
+            const delBtn = row.querySelector(`button[onclick*="${deletePattern}"]`);
+            if (!delBtn) return;
+            const m = delBtn.getAttribute('onclick').match(new RegExp(`${deletePattern}\\(['"]([^'"]+)['"]\\)`));
+            if (!m) return;
+            const itemId = m[1];
 
             row.dataset.itemId = itemId;
             row.draggable = true;
 
-            // 드래그 핸들 셀 (첫 번째로 삽입)
+            // 드래그 핸들 셀 삽입 (한 번만)
             if (!row.querySelector('td.drag-handle')) {
-                const handleTd = document.createElement('td');
-                handleTd.className = 'drag-handle';
-                handleTd.innerHTML = `<span style="${DRAG_HANDLE_STYLE}" title="드래그하여 순서 변경">≡</span>`;
-                row.insertBefore(handleTd, row.firstChild);
+                const td = document.createElement('td');
+                td.className = 'drag-handle';
+                td.innerHTML = `<span style="${HANDLE_STYLE}" title="드래그하여 순서 변경">≡</span>`;
+                row.insertBefore(td, row.firstChild);
             }
 
-            // name 셀 편집 UI (hotelPriceList: col 2 / simplePriceList: col 1 — 핸들 삽입 후)
+            // 핸들 삽입 후 name 셀 위치: hotelPriceList → col 2, simplePriceList → col 1
             const nameCellIdx = deletePattern === 'deleteHotelPrice' ? 2 : 1;
-            const updatedCells = row.querySelectorAll('td');
-            const nameCell = updatedCells[nameCellIdx];
+            const nameCell = row.querySelectorAll('td')[nameCellIdx];
             if (!nameCell || nameCell.querySelector('input[data-old-name]')) return;
             const strong = nameCell.querySelector('strong');
             if (!strong) return;
             const name = strong.textContent;
-            nameCell.innerHTML = `
-                <input type="text" value="${name.replace(/"/g, '&quot;')}" data-old-name="${name.replace(/"/g, '&quot;')}"
-                    style="width:110px; padding:3px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px;"
-                    onkeydown="if(event.key==='Enter') window._itemNameSave('${itemId}', this)">
-                <button class="btn" onclick="window._itemNameSave('${itemId}', this.previousElementSibling)"
-                    style="padding:3px 8px; font-size:11px; margin-left:4px; background:#3b82f6; color:#fff; border:none; border-radius:4px; cursor:pointer;">저장</button>`;
-
-            dragInitialized = true;
+            nameCell.innerHTML = makeNameInput(itemId, name, '_itemNameSave');
+            any = true;
         });
 
-        if (dragInitialized) initDragSort(tbody);
+        if (any) initDragSort(tbody, saveSortFn);
     }
 
-    /* ───────────── FUNCTION WRAPPERS ───────────── */
+    /* ─────────────────────────────────────────
+       ROW INJECTION — 기본 단가 (sort_order 셀 교체)
+    ───────────────────────────────────────── */
+
+    function injectDefaultRowUI(tbody) {
+        let any = false;
+
+        tbody.querySelectorAll('tr').forEach(row => {
+            const cells = row.querySelectorAll('td');
+            // col 0: sort_order input, col 1: name, col 2: price, col 3: unit, col 4: delete
+            if (cells.length < 5) return;
+
+            const delBtn = row.querySelector('button[onclick*="deleteDefaultPrice"]');
+            if (!delBtn) return;
+            const m = delBtn.getAttribute('onclick').match(/deleteDefaultPrice\(['"]([^'"]+)['"]\)/);
+            if (!m) return;
+            const itemId = m[1];
+
+            row.dataset.itemId = itemId;
+            row.draggable = true;
+
+            // col 0: 숫자 입력 → 드래그 핸들로 교체
+            if (!cells[0].querySelector('span.drag-handle-icon')) {
+                cells[0].innerHTML = `<span class="drag-handle-icon" style="${HANDLE_STYLE}" title="드래그하여 순서 변경">≡</span>`;
+                cells[0].style.padding = '4px 2px';
+            }
+
+            // col 1: 품목명 → 인라인 편집
+            if (!cells[1].querySelector('input[data-old-name]')) {
+                const name = cells[1].textContent.trim();
+                cells[1].innerHTML = makeNameInput(itemId, name, '_defaultItemNameSave');
+            }
+
+            any = true;
+        });
+
+        if (any) initDragSort(tbody, saveDefaultSortOrder);
+    }
+
+    function makeNameInput(itemId, name, saveFn) {
+        const escaped = name.replace(/"/g, '&quot;');
+        return `<input type="text" value="${escaped}" data-old-name="${escaped}"
+            style="width:110px; padding:3px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px;"
+            onkeydown="if(event.key==='Enter') window.${saveFn}('${itemId}', this)">
+        <button class="btn" onclick="window.${saveFn}('${itemId}', this.previousElementSibling)"
+            style="padding:3px 8px; font-size:11px; margin-left:4px; background:#3b82f6; color:#fff; border:none; border-radius:4px; cursor:pointer;">저장</button>`;
+    }
+
+    /* ─────────────────────────────────────────
+       FUNCTION WRAPPERS
+    ───────────────────────────────────────── */
 
     function patchHotelPriceList() {
         const orig = window.loadHotelPriceList;
         if (!orig || orig.__patched) return;
-
         window.loadHotelPriceList = async function(...args) {
             await orig.apply(this, args);
             const tbody = document.getElementById('hotelPriceList');
-            if (tbody) injectRowUI(tbody, 'deleteHotelPrice');
+            if (tbody) injectHotelRowUI(tbody, 'deleteHotelPrice', saveHotelSortOrder);
         };
         window.loadHotelPriceList.__patched = true;
     }
@@ -235,18 +283,29 @@
     function patchSimplePriceList() {
         const orig = window.loadSimplePriceList;
         if (!orig || orig.__patched) return;
-
         window.loadSimplePriceList = async function(...args) {
             await orig.apply(this, args);
             const tbody = document.getElementById('simplePriceList');
-            if (tbody) injectRowUI(tbody, 'deleteSimpleItem');
+            if (tbody) injectHotelRowUI(tbody, 'deleteSimpleItem', saveHotelSortOrder);
         };
         window.loadSimplePriceList.__patched = true;
+    }
+
+    function patchAdminDefaultPriceList() {
+        const orig = window.loadAdminDefaultPriceList;
+        if (!orig || orig.__patched) return;
+        window.loadAdminDefaultPriceList = async function(...args) {
+            await orig.apply(this, args);
+            const tbody = document.getElementById('adminDefaultPriceList');
+            if (tbody) injectDefaultRowUI(tbody);
+        };
+        window.loadAdminDefaultPriceList.__patched = true;
     }
 
     function applyPatches() {
         patchHotelPriceList();
         patchSimplePriceList();
+        patchAdminDefaultPriceList();
     }
 
     if (document.readyState === 'loading') {
