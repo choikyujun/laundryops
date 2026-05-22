@@ -2859,6 +2859,17 @@ window.clearLoginError = function() {
     });
 };
 
+function _applySaveId(role, id) {
+    const checked = document.getElementById('saveIdCheck')?.checked;
+    if (checked) {
+        localStorage.setItem('savedLoginRole', role);
+        localStorage.setItem('savedLoginId', id);
+    } else {
+        localStorage.removeItem('savedLoginRole');
+        localStorage.removeItem('savedLoginId');
+    }
+}
+
 window._realLogin = window.login = async function() {
     const roleEl = document.getElementById('loginRole');
     const idEl = document.getElementById('loginId');
@@ -2889,6 +2900,7 @@ window._realLogin = window.login = async function() {
         }
         
         if (lId === superAdminId && password === superAdminPw) {
+            _applySaveId(role, lId);
             showView('superAdminView', '플랫폼 총괄 관리자');
             window.loadSuperAdminDashboard();
             if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
@@ -2911,9 +2923,10 @@ window._realLogin = window.login = async function() {
         if (data.status === 'pending') { window.showLoginError('가입 승인 대기 중입니다. 플랫폼 관리자의 승인을 기다려주세요.', null); return; }
         if (data.status === 'suspended') { window.showLoginError('미운영 상태입니다. 관리자에게 문의하세요.', null); return; }
 
+        _applySaveId(role, lId);
         currentFactoryId = data.id;
         localStorage.setItem('currentFactoryId', data.id);
-        
+
         if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
         
         // [만료일 체크 및 구독 상태 자동 업데이트]
@@ -2975,6 +2988,7 @@ window._realLogin = window.login = async function() {
 
         if (error || !data || data.login_pw !== password) { window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw'); return; }
 
+        _applySaveId(role, lId);
         currentFactoryId = data.factory_id;
         currentStaffName = data.name; localStorage.setItem('staffName', data.name); localStorage.setItem('currentStaffName', data.name);
         localStorage.setItem('currentFactoryId', data.factory_id);
@@ -3001,6 +3015,7 @@ window._realLogin = window.login = async function() {
 
         if (error || !data || data.login_pw !== password) { window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw'); return; }
 
+        _applySaveId(role, lId);
         currentFactoryId = data.factory_id;
         currentHotelId = data.id;
         localStorage.setItem('currentFactoryId', data.factory_id);
