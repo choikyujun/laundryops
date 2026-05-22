@@ -68,12 +68,12 @@
         if (result.error) {
             alert('저장 실패: ' + (result.error.message || '오류'));
             inputEl.value = oldName;
-            if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+            if (btn) { btn.disabled = false; btn.textContent = '품목수정'; }
             return;
         }
 
         inputEl.dataset.oldName = newName;
-        if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+        if (btn) { btn.disabled = false; btn.textContent = '품목수정'; }
         if (typeof window.loadHotelPriceList === 'function') window.loadHotelPriceList();
         else if (typeof window.loadSimplePriceList === 'function') window.loadSimplePriceList();
 
@@ -103,12 +103,12 @@
         if (error) {
             alert('저장 실패: ' + (error.message || '오류'));
             inputEl.value = oldName;
-            if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+            if (btn) { btn.disabled = false; btn.textContent = '품목수정'; }
             return;
         }
 
         inputEl.dataset.oldName = newName;
-        if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+        if (btn) { btn.disabled = false; btn.textContent = '품목수정'; }
         alert('품목명이 변경되었습니다.');
     };
 
@@ -262,7 +262,7 @@
             style="width:110px; padding:3px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px;"
             onkeydown="if(event.key==='Enter') window.${saveFn}('${itemId}', this)">
         <button class="btn" onclick="window.${saveFn}('${itemId}', this.previousElementSibling)"
-            style="padding:3px 8px; font-size:11px; margin-left:4px; background:#3b82f6; color:#fff; border:none; border-radius:4px; cursor:pointer;">저장</button>`;
+            style="padding:3px 8px; font-size:11px; margin-left:4px; background:#3b82f6; color:#fff; border:none; border-radius:4px; cursor:pointer;">품목수정</button>`;
     }
 
     /* ─────────────────────────────────────────
