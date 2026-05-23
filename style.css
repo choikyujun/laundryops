@@ -16,6 +16,9 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
       #adminHotelList td:first-child { text-align: left; padding-left: 10px; }
       .admin-table th { background: #f8fafc; color: var(--secondary); font-weight: 600; font-size: 12px; }
       .admin-table td { font-size: 12px; }
+      #adminTopRankingArea .admin-table tbody tr { transition: background-color 0.15s, color 0.15s; cursor: default; }
+      #adminTopRankingArea .admin-table tbody tr:hover { background-color: #005b9f; color: #fff; }
+      #adminTopRankingArea .admin-table tbody tr:hover td { color: #fff; }
       .admin-table input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; outline: none; }
 
       /* 모달 내 테이블 타이트하게 조정 */
