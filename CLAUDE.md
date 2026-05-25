@@ -32,7 +32,7 @@ laundryops/
 |------|------|
 | 라이브 URL | https://www.laundryops.co.kr |
 | Vercel URL | https://laundry-ops.vercel.app |
-| GitHub | https://github.com/choikyujin/laundry-ops |
+| GitHub | https://github.com/choikyujin/laundryops |
 | 배포 방식 | GitHub main 브랜치 push → Vercel 자동 배포 (1~2분) |
 | 브랜드 | CEGO 씨고 세탁고수 |
 

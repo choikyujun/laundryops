@@ -7870,3 +7870,86 @@ window.downloadSentLogExcel = async function(logId, displayPeriod) {
 
 // [전역 강제 연결] login() 함수 전역 스코프 노출
 window.login = window.login || function() {};
+
+
+// ========= 어드민 메인 대시보드 10분 자동 새로고침 (v38) =========
+// 추가일: 2026-05-25
+// 목적: 어드민(세탁공장 대표)이 메인 대시보드 화면에 머물러 있을 때
+//       오늘 매출이 갱신되는 것을 자동으로 확인할 수 있도록 10분 간격으로 데이터 새로고침.
+// 동작 조건:
+//   1) 로그인 상태(currentFactoryId 존재)
+//   2) #adminView 가 활성 화면
+//   3) #tab_adminStats 가 활성 탭 (다른 탭에서는 작동 안 함)
+//   4) 탭이 포그라운드 상태
+//   5) 모달이 열려있지 않음 (작업 중 보호)
+(function setupAdminAutoRefresh() {
+  const INTERVAL_MS = 10 * 60 * 1000; // 10분
+  const INDICATOR_ID = 'autoRefreshIndicator';
+
+  // 화면 상단에 '마지막 업데이트' 표시 한 줄 삽입 (최초 1회만)
+  function ensureIndicator() {
+    if (document.getElementById(INDICATOR_ID)) return;
+    const subBanner = document.getElementById('subBanner');
+    if (!subBanner || !subBanner.parentNode) return;
+    const el = document.createElement('div');
+    el.id = INDICATOR_ID;
+    el.style.cssText = 'font-size:12px;color:#64748b;text-align:right;margin:4px 0 8px;';
+    el.innerText = '🔄 자동 새로고침 대기 중 (10분 간격)';
+    subBanner.parentNode.insertBefore(el, subBanner.nextSibling);
+  }
+
+  function updateIndicator(text) {
+    const el = document.getElementById(INDICATOR_ID);
+    if (el) el.innerText = text;
+  }
+
+  async function tick() {
+    // 1) 로그인 안 되어 있으면 스킵
+    if (!currentFactoryId) return;
+
+    // 2) 어드민 화면이 활성 상태인지
+    const adminView = document.getElementById('adminView');
+    if (!adminView || !adminView.classList.contains('active')) return;
+
+    // 3) 메인 대시보드 탭이 활성 상태인지 (거래처/직원/월정산 탭에선 스킵)
+    const statsTab = document.getElementById('tab_adminStats');
+    if (!statsTab || !statsTab.classList.contains('active')) return;
+
+    // 4) 탭이 백그라운드면 스킵
+    if (document.visibilityState !== 'visible') return;
+
+    // 5) 모달이 열려 있으면 스킵 (작업 중 보호)
+    const openModal = Array.from(document.querySelectorAll('.modal'))
+        .some(m => m.style.display === 'flex' || m.style.display === 'block');
+    if (openModal) return;
+
+    // 6) 실제 새로고침 (loadAdminDashboard 가 매출/명세서/추이차트/랭킹 모두 갱신)
+    try {
+      ensureIndicator();
+      updateIndicator('🔄 새로고침 중...');
+      if (typeof window.loadAdminDashboard === 'function') {
+        await window.loadAdminDashboard();
+      }
+      const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      updateIndicator('✅ 마지막 업데이트: ' + now + ' (10분 간격 자동)');
+      console.log('[자동 새로고침] 완료 -', now);
+    } catch (err) {
+      console.warn('[자동 새로고침] 실패:', err);
+      updateIndicator('⚠️ 새로고침 실패 - 다음 주기에 재시도');
+    }
+  }
+
+  // 10분 간격 자동 실행
+  setInterval(tick, INTERVAL_MS);
+
+  // 백그라운드 → 포그라운드 복귀 시, 10분 이상 비활성이었으면 즉시 1회 갱신
+  let lastVisibleAt = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (Date.now() - lastVisibleAt > INTERVAL_MS) tick();
+      lastVisibleAt = Date.now();
+    }
+  });
+
+  console.log('[자동 새로고침] 설정 완료 - 10분 간격, 어드민 메인 대시보드 한정');
+})();
