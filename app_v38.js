@@ -6709,6 +6709,11 @@ window.viewInvoiceDetail = async function(id) {
     let pM = prevMonthD.getMonth() + 1;
     let pY = prevMonthD.getFullYear();
     const prevMonthStr = pY + '-' + (pM < 10 ? '0' + pM : pM);
+    const todayDay = parseInt(todayStr.split('-')[2]);
+    const prevMonthLastDay = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 0).getDate();
+    const cappedDay = Math.min(todayDay, prevMonthLastDay);
+    const prevMonthStart = prevMonthStr + '-01';
+    const prevMonthEnd = prevMonthStr + '-' + String(cappedDay).padStart(2, '0');
 
     let todayRev = 0, monthRev = 0, prevMonthRev = 0;
     const hotelSales = {};
@@ -6726,11 +6731,11 @@ window.viewInvoiceDetail = async function(id) {
             const hName = inv.hotels ? inv.hotels.name : '알수없음';
             const supplyPrice = inv.total_amount;
             if(inv.date === todayStr) todayRev += supplyPrice;
-            if(inv.date.startsWith(curMonth)) {
+            if(inv.date.startsWith(curMonth) && inv.date <= todayStr) {
                 monthRev += supplyPrice;
                 hotelSales[hName] = (hotelSales[hName] || 0) + supplyPrice;
             }
-            if(inv.date.startsWith(prevMonthStr)) prevMonthRev += supplyPrice;
+            if(inv.date >= prevMonthStart && inv.date <= prevMonthEnd) prevMonthRev += supplyPrice;
         });
     }
 
