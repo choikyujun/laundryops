@@ -30,6 +30,18 @@
     return { type: 'pattern', pattern: 'solid', fgColor: color };
   }
 
+  // 4면 thin 격자선. overrides로 특정 면을 medium 등으로 오버라이드 가능.
+  function gridBorder(overrides) {
+    const b = {
+      top:    { style: 'thin', color: C.divider },
+      bottom: { style: 'thin', color: C.divider },
+      left:   { style: 'thin', color: C.divider },
+      right:  { style: 'thin', color: C.divider },
+    };
+    if (overrides) Object.assign(b, overrides);
+    return b;
+  }
+
   // 헤더 2행: 좌측 제목/기간 + 우측 거래처명/브랜드, 2행 하단 그린 medium 라인
   function addHeaderRows(ws, cs, last, hotelName, period) {
     const mid = cs + Math.floor((last - cs) / 2);
@@ -75,14 +87,14 @@
       tc.font  = { name: FONT, bold: true, size: 10, color: C.white };
       tc.fill  = fillSolid(C.green);
       tc.alignment = { vertical: 'middle', horizontal: 'center' };
-      tc.border = { top: { style: 'medium', color: C.body } };
+      tc.border = gridBorder({ top: { style: 'medium', color: C.body } });
       ws.getRow(rowNum).height = 22;
       return;
     }
 
     // 상단 medium 테두리 전체 적용
     for (let c = cs; c <= last; c++) {
-      ws.getCell(rowNum, c).border = { top: { style: 'medium', color: C.body } };
+      ws.getCell(rowNum, c).border = gridBorder({ top: { style: 'medium', color: C.body } });
     }
 
     // 합계 금액(그린) 최소 2열 확보: supply ~30%, vat ~20%, total ~50%
@@ -252,11 +264,11 @@
       // 열 정의: A=여백, B~=내용
       if (globalHasDeduction) {
         ws.columns = [
-          { width: 2.4 }, { width: 22 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 16 },
+          { width: 2.4 }, { width: 22 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 16 }, { width: 2.4 },
         ];
       } else {
         ws.columns = [
-          { width: 2.4 }, { width: 22 }, { width: 13 }, { width: 12 }, { width: 16 },
+          { width: 2.4 }, { width: 22 }, { width: 13 }, { width: 12 }, { width: 16 }, { width: 2.4 },
         ];
       }
       const CS   = 2;
@@ -275,6 +287,7 @@
         catCell.font     = { name: FONT, bold: true, size: 10, color: C.greenDeep };
         catCell.fill     = fillSolid(C.greenTint);
         catCell.alignment = { vertical: 'middle', horizontal: 'left' };
+        catCell.border    = gridBorder();
         ws.getRow(rowNum).height = 20;
         rowNum++;
 
@@ -288,7 +301,7 @@
           c.font     = { name: FONT, bold: true, size: 10, color: C.body };
           c.fill     = fillSolid(C.headerBg);
           c.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' };
-          c.border   = { bottom: { style: 'thin', color: C.green } };
+          c.border   = gridBorder({ bottom: { style: 'medium', color: C.green } });
         });
         ws.getRow(rowNum).height = 18;
         rowNum++;
@@ -304,6 +317,7 @@
             c.value    = v;
             c.font     = { name: FONT, size: 10, color: C.body };
             c.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' };
+            c.border    = gridBorder();
             if (i === 0) return;
             if (i === 1) {
               c.numFmt = '#,##0';               // 단가
@@ -333,7 +347,8 @@
       ws.columns = [
         { width: 2.4 },
         { width: 10 },
-      ].concat(itemNames.map(function () { return { width: 10 }; }));
+      ].concat(itemNames.map(function () { return { width: 10 }; }))
+       .concat([{ width: 2.4 }]);
 
       const CS   = 2;
       const LAST = 2 + itemNames.length;  // A(여백)+B(일자)+N(품목)
@@ -346,7 +361,7 @@
       dateHdr.font     = { name: FONT, bold: true, size: 10, color: C.body };
       dateHdr.fill     = fillSolid(C.headerBg);
       dateHdr.alignment = { vertical: 'middle', horizontal: 'center' };
-      dateHdr.border   = { bottom: { style: 'thin', color: C.green } };
+      dateHdr.border   = gridBorder({ bottom: { style: 'medium', color: C.green } });
 
       itemNames.forEach(function (n, i) {
         const c    = ws.getCell(3, CS + 1 + i);
@@ -354,7 +369,7 @@
         c.font     = { name: FONT, bold: true, size: 10, color: C.body };
         c.fill     = fillSolid(C.headerBg);
         c.alignment = { vertical: 'middle', horizontal: 'center' };
-        c.border   = { bottom: { style: 'thin', color: C.green } };
+        c.border   = gridBorder({ bottom: { style: 'medium', color: C.green } });
       });
       ws.getRow(3).height = 18;
 
@@ -365,7 +380,7 @@
         dr.value    = d.slice(8) + '일';
         dr.font     = { name: FONT, size: 10, color: C.dim };
         dr.alignment = { vertical: 'middle', horizontal: 'center' };
-        dr.border   = { bottom: { style: 'thin', color: C.divider } };
+        dr.border   = gridBorder();
 
         itemNames.forEach(function (n, i) {
           const c   = ws.getCell(r, CS + 1 + i);
@@ -374,7 +389,7 @@
           c.font    = { name: FONT, size: 10, color: rawVal < 0 ? C.red : C.body };
           if (rawVal !== 0) c.numFmt = '#,##0';
           c.alignment = { vertical: 'middle', horizontal: 'center' };
-          c.border  = { bottom: { style: 'thin', color: C.divider } };
+          c.border  = gridBorder();
         });
         r++;
       });
@@ -386,6 +401,7 @@
         dl.font     = { name: FONT, bold: true, size: 10, color: C.red };
         dl.fill     = fillSolid(C.deductBg);
         dl.alignment = { vertical: 'middle', horizontal: 'center' };
+        dl.border    = gridBorder();
 
         itemNames.forEach(function (n, i) {
           const negQty = allDates.reduce(function (s, d) {
@@ -398,6 +414,7 @@
           c.fill    = fillSolid(C.deductBg);
           if (dedVal !== 0) c.numFmt = '#,##0';
           c.alignment = { vertical: 'middle', horizontal: 'center' };
+          c.border    = gridBorder();
         });
         r++;
       }
@@ -408,7 +425,7 @@
       sumLabel.font     = { name: FONT, bold: true, size: 10, color: C.body };
       sumLabel.fill     = fillSolid(C.headerBg);
       sumLabel.alignment = { vertical: 'middle', horizontal: 'center' };
-      sumLabel.border   = { top: { style: 'medium', color: C.body } };
+      sumLabel.border   = gridBorder({ top: { style: 'medium', color: C.body } });
 
       itemNames.forEach(function (n, i) {
         const posQty = allDates.reduce(function (s, d) {
@@ -424,7 +441,7 @@
         c.fill    = fillSolid(C.headerBg);
         if (sumQty !== 0) c.numFmt = '#,##0';
         c.alignment = { vertical: 'middle', horizontal: 'center' };
-        c.border  = { top: { style: 'medium', color: C.body } };
+        c.border  = gridBorder({ top: { style: 'medium', color: C.body } });
       });
       r++;
 
@@ -433,6 +450,7 @@
       prLabel.value    = '단가';
       prLabel.font     = { name: FONT, size: 10, color: C.dim };
       prLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+      prLabel.border    = gridBorder();
 
       itemNames.forEach(function (n, i) {
         const c   = ws.getCell(r, CS + 1 + i);
@@ -440,6 +458,7 @@
         c.font    = { name: FONT, size: 10, color: C.dim };
         c.numFmt  = '#,##0';
         c.alignment = { vertical: 'middle', horizontal: 'center' };
+        c.border  = gridBorder();
       });
       r++;
 
@@ -449,6 +468,7 @@
       totLabel.font     = { name: FONT, bold: true, size: 10, color: C.greenDeep };
       totLabel.fill     = fillSolid(C.greenTint);
       totLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+      totLabel.border    = gridBorder();
 
       itemNames.forEach(function (n, i) {
         const posQty = allDates.reduce(function (s, d) {
@@ -463,6 +483,7 @@
         c.fill    = fillSolid(C.greenTint);
         c.numFmt  = '#,##0';
         c.alignment = { vertical: 'middle', horizontal: 'center' };
+        c.border  = gridBorder();
       });
       r++;
 
