@@ -11,7 +11,7 @@
            String.fromCharCode(65 + ((n - 1) % 26));
   }
 
-  const FONT = '맑은 고딕';
+  const FONT = 'Malgun Gothic';
 
   const C = {
     green:     { argb: 'FF0F6E56' },
