@@ -243,7 +243,7 @@ window.printInvoiceDetail = async function() {
             if (f && f.bank_info) {
                 const area = document.getElementById('invoiceDetailArea');
                 if (area) {
-                    const bankHtml = `<div id="bankInfoInvoice" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+                    const bankHtml = `<div id="bankInfoInvoice" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;"><svg class="icon" aria-hidden="true"><use href="#i-credit-card"/></svg> 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
                     area.insertAdjacentHTML('beforeend', bankHtml);
                 }
             }
@@ -264,7 +264,7 @@ window.printSendInvoice = async function() {
             if (f && f.bank_info) {
                 const area = document.getElementById('sendInvoiceArea');
                 if (area) {
-                    const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+                    const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;"><svg class="icon" aria-hidden="true"><use href="#i-credit-card"/></svg> 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
                     area.insertAdjacentHTML('beforeend', bankHtml);
                 }
             }
@@ -285,7 +285,7 @@ window.openSendInvoiceModal = async function() {
             .maybeSingle();
         if (!f || !f.bank_info) return;
 
-        const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+        const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;"><svg class="icon" aria-hidden="true"><use href="#i-credit-card"/></svg> 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
 
         // 1) 인쇄 영역 ID가 있으면 그 안에 추가 (발송내역 팝업)
         const printIds = ['sent-report-to-print', 'send-report-print-area'];
@@ -971,7 +971,7 @@ window.saveAndPrintInvoice = async function() {
     try {
     const hId = document.getElementById('staffHotelSelect').value;
     const date = document.getElementById('invoiceDate').value;
-    if (!hId || !date) { if(saveBtn) { saveBtn.dataset.saving=''; saveBtn.disabled=false; saveBtn.innerText='💾 저장하기'; } return; }
+    if (!hId || !date) { if(saveBtn) { saveBtn.dataset.saving=''; saveBtn.disabled=false; saveBtn.innerHTML='<svg class="icon" aria-hidden="true"><use href="#i-save"/></svg> 저장하기'; } return; }
 
     // 품목 수집 (item-price 셀에서 가격 읽기)
     const items = [];
@@ -1054,7 +1054,7 @@ window.saveAndPrintInvoice = async function() {
         if (saveBtn) {
             saveBtn.dataset.saving = '';
             saveBtn.disabled = false;
-            saveBtn.innerText = '💾 저장하기';
+            saveBtn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-save"/></svg> 저장하기';
         }
     }
 };
@@ -1716,7 +1716,7 @@ window.loadAdminHotelList = async function() {
   tbody.innerHTML = '';
   // 상단 안내 문구
   tbody.innerHTML += `<tr><td colspan="5" style="padding:6px 10px; background:#fff5f5; color:#dc2626; font-size:12px; border-bottom:1px solid #fecaca;">
-      💡 거래처명 옆 <strong style="color:#16a34a;">[운영중]</strong> 클릭 시 <strong style="color:#dc2626;">[거래종료]</strong>로, <strong style="color:#dc2626;">[거래종료]</strong> 클릭 시 <strong style="color:#16a34a;">[운영중]</strong>으로 변경됩니다. 거래종료된 거래처는 명세서 작성 화면에 표시되지 않습니다.
+      <svg class="icon" aria-hidden="true"><use href="#i-lightbulb"/></svg> 거래처명 옆 <strong style="color:#16a34a;">[운영중]</strong> 클릭 시 <strong style="color:#dc2626;">[거래종료]</strong>로, <strong style="color:#dc2626;">[거래종료]</strong> 클릭 시 <strong style="color:#16a34a;">[운영중]</strong>으로 변경됩니다. 거래종료된 거래처는 명세서 작성 화면에 표시되지 않습니다.
   </td></tr>`;
   hotels.forEach(h => {
       const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
@@ -2636,8 +2636,8 @@ function renderHotelReceivedPage() {
         const displayPeriod = log.period || '-';
         const confirmed = log.is_confirmed === true;
         const statusBadge = confirmed
-            ? `<span class="badge" style="background:#16a34a; color:white; padding:2px 8px; border-radius:4px;">✅ 확인완료</span>`
-            : `<span class="badge" style="background:var(--danger); color:white; padding:2px 8px; border-radius:4px;">🔴 수신완료</span>`;
+            ? `<span class="badge" style="background:#16a34a; color:white; padding:2px 8px; border-radius:4px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 확인완료</span>`
+            : `<span class="badge" style="background:var(--danger); color:white; padding:2px 8px; border-radius:4px;"><svg class="icon icon-dot" aria-hidden="true"><use href="#i-dot-red"/></svg> 수신완료</span>`;
 
         tbody.innerHTML += `<tr>
             <td style="text-align:left;">${displayPeriod}</td>
@@ -3090,7 +3090,7 @@ window.openInvoiceModal = async function() {
     const badge = document.getElementById('editModeBadge');
     if (badge) {
         badge.style.display = isEditMode ? 'block' : 'none';
-        badge.innerText = isEditMode ? '✏️ 수정 모드 — 기존 명세서를 불러왔습니다.' : '';
+        badge.innerHTML = isEditMode ? '<svg class="icon" aria-hidden="true"><use href="#i-pencil"/></svg> 수정 모드 — 기존 명세서를 불러왔습니다.' : '';
     }
 
     // 기존 수량 맵 (품목명 → qty)
@@ -3153,7 +3153,7 @@ window.openInvoiceModal = async function() {
             grouped[cat].push(item);
         });
         catOrder.forEach(cat => {
-            tbody.innerHTML += `<tr style="background:#f1f5f9;"><td colspan="5" style="font-weight:700; padding:6px 8px; border-bottom:1px solid #cbd5e1;">📂 ${cat}</td></tr>`;
+            tbody.innerHTML += `<tr style="background:#f1f5f9;"><td colspan="5" style="font-weight:700; padding:6px 8px; border-bottom:1px solid #cbd5e1;"><svg class="icon" aria-hidden="true"><use href="#i-folder-open"/></svg> ${cat}</td></tr>`;
             grouped[cat].forEach(item => { tbody.innerHTML += makeRow(item); });
         });
     } else {
@@ -4511,8 +4511,8 @@ window.OLD_sendInvoicesToClient_0 = async function() {
 
     const btnHtml = `
         <div style="text-align:center; margin-top:10px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
-            <button onclick="openDeductionModal()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:6px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 8px 20px; font-size: 14px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:6px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:6px;">🖨️ 인쇄하기</button>
+            <button onclick="openDeductionModal()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:6px;"><svg class="icon" aria-hidden="true"><use href="#i-minus-circle"/></svg> 월말 차감 내역 추가</button>
+            <button id="sendInvBtn" style="padding: 8px 20px; font-size: 14px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:6px;"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:6px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         </div>
     `;
 
@@ -5021,8 +5021,8 @@ window.OLD_sendInvoicesToClient_1 = async function() {
 
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
-            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
+            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-minus-circle"/></svg> 월말 차감 내역 추가</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         </div>
     `;
 
@@ -5411,8 +5411,8 @@ window.OLD_sendInvoicesToClient_2 = async function() {
 
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
-            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
+            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-minus-circle"/></svg> 월말 차감 내역 추가</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         </div>
     `;
 
@@ -5571,7 +5571,7 @@ window.exportInvoicesToPDF = async function() {
     // 세탁공장 계좌 정보 조회
     const { data: fInfo } = await window.mySupabase.from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
     const bankInfoHtml = (fInfo && fInfo.bank_info)
-        ? `<div style="margin-top:20px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${fInfo.bank_info}</span></div>`
+        ? `<div style="margin-top:20px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;"><svg class="icon" aria-hidden="true"><use href="#i-credit-card"/></svg> 입금 계좌 정보: </span><span>${fInfo.bank_info}</span></div>`
         : '';
 
     const { data: list, error } = await window.mySupabase.from('invoices')
@@ -5818,8 +5818,8 @@ window.OLD_sendInvoicesToClient_3 = async function() {
 
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
-            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
+            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-minus-circle"/></svg> 월말 차감 내역 추가</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         </div>
     `;
 
@@ -5977,7 +5977,7 @@ window.openHotelModal = async function(hId = null) {
     if (genRadio) genRadio.checked = true;
 
     if (hId) {
-        title.innerText = '🤝 거래처 정보 수정';
+        title.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-handshake"/></svg> 거래처 정보 수정';
         btn.innerText = '수정 완료';
         const { data: h } = await window.mySupabase.from('hotels').select('*').eq('id', hId).single();
         if(h) {
@@ -5997,7 +5997,7 @@ window.openHotelModal = async function(hId = null) {
             if(typeof toggleFixedAmountField === 'function') toggleFixedAmountField();
         }
     } else {
-        title.innerText = '🤝 신규 거래처 등록';
+        title.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-handshake"/></svg> 신규 거래처 등록';
         btn.innerText = '거래처 등록';
         
         // 🚀 신규 등록 시 모든 입력 폼 초기화 (리셋)
@@ -6693,7 +6693,7 @@ window.viewInvoiceDetail = async function(id) {
 
     reportHtml += `
     <div style="text-align:center; margin-top:10px;">
-        <button class="btn btn-neutral" onclick="printInvoiceDetail()" style="padding:10px 30px;">🖨️ 영수증 인쇄</button>
+        <button class="btn btn-neutral" onclick="printInvoiceDetail()" style="padding:10px 30px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 영수증 인쇄</button>
     </div>`;
 
     document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
@@ -7056,8 +7056,8 @@ window.sendInvoicesToClient = async function() {
 
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
-            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
+            <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-minus-circle"/></svg> 월말 차감 내역 추가</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         </div>
     `;
 
@@ -7247,7 +7247,7 @@ window.sendInvoicesToClient = async function() {
             
         } catch (e) {
             alert('발송 중 오류가 발생했습니다: ' + e.message);
-            this.innerText = '✈️ 거래처로 발송하기';
+            this.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-send"/></svg> 거래처로 발송하기';
             this.disabled = false;
         }
     };
@@ -7505,14 +7505,14 @@ window.viewSentDetail = async function(hotelName, period, sentLogId, isPartnerVi
     let confirmBtnHtml = '';
     if (isPartnerView && sentLogId) {
         confirmBtnHtml = isConfirmed
-            ? `<div style="padding:8px 20px; background:#dcfce7; color:#16a34a; font-weight:700; border-radius:8px; font-size:14px;">✅ 정산 확인 완료</div>`
-            : `<button onclick="confirmHotelSettlement('${sentLogId}')" style="padding:10px 24px; cursor:pointer; font-size:14px; font-weight:700; background:#16a34a; color:white; border:none; border-radius:8px;">✅ 정산확인</button>`;
+            ? `<div style="padding:8px 20px; background:#dcfce7; color:#16a34a; font-weight:700; border-radius:8px; font-size:14px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 정산 확인 완료</div>`
+            : `<button onclick="confirmHotelSettlement('${sentLogId}')" style="padding:10px 24px; cursor:pointer; font-size:14px; font-weight:700; background:#16a34a; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 정산확인</button>`;
     }
 
     reportHtml += `
     <div class="no-print" style="display:flex; gap:10px; justify-content:center; margin-top:12px; flex-wrap:wrap;">
         ${confirmBtnHtml}
-        <button onclick="printReport('send-report-print-area')" style="padding:10px 30px; cursor:pointer; font-size:14px; font-weight:700; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
+        <button onclick="printReport('send-report-print-area')" style="padding:10px 30px; cursor:pointer; font-size:14px; font-weight:700; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
         <button onclick="closeModal('sendInvoiceModal')" style="padding:10px 20px; cursor:pointer; font-size:14px; font-weight:700; background:#e2e8f0; color:#374151; border:none; border-radius:8px;">닫기</button>
     </div>`;
 
@@ -7894,13 +7894,13 @@ window.login = window.login || function() {};
     const el = document.createElement('div');
     el.id = INDICATOR_ID;
     el.style.cssText = 'font-size:12px;color:#64748b;text-align:right;margin:4px 0 8px;';
-    el.innerText = '🔄 자동 새로고침 대기 중 (10분 간격)';
+    el.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"/></svg> 자동 새로고침 대기 중 (10분 간격)';
     subBanner.parentNode.insertBefore(el, subBanner.nextSibling);
   }
 
   function updateIndicator(text) {
     const el = document.getElementById(INDICATOR_ID);
-    if (el) el.innerText = text;
+    if (el) el.innerHTML = text;
   }
 
   async function tick() {
@@ -7926,16 +7926,16 @@ window.login = window.login || function() {};
     // 6) 실제 새로고침 (loadAdminDashboard 가 매출/명세서/추이차트/랭킹 모두 갱신)
     try {
       ensureIndicator();
-      updateIndicator('🔄 새로고침 중...');
+      updateIndicator('<svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"/></svg> 새로고침 중...');
       if (typeof window.loadAdminDashboard === 'function') {
         await window.loadAdminDashboard();
       }
       const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      updateIndicator('✅ 마지막 업데이트: ' + now + ' (10분 간격 자동)');
+      updateIndicator('<svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 마지막 업데이트: ' + now + ' (10분 간격 자동)');
       console.log('[자동 새로고침] 완료 -', now);
     } catch (err) {
       console.warn('[자동 새로고침] 실패:', err);
-      updateIndicator('⚠️ 새로고침 실패 - 다음 주기에 재시도');
+      updateIndicator('<svg class="icon" aria-hidden="true"><use href="#i-alert-circle"/></svg> 새로고침 실패 - 다음 주기에 재시도');
     }
   }
 

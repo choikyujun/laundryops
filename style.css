@@ -175,6 +175,11 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
 .modal-content input.error { border-color: var(--danger); background-color: #fff5f5; }
 
 /* 어드민 거래명세서 목록 — 날짜 그룹 줄무늬 */
+/* ── SVG 아이콘 공통 ──────────────────────────────────────────────── */
+.icon { display: inline-block; width: 18px; height: 18px; vertical-align: -3px; flex-shrink: 0; }
+.icon-lg { width: 22px; height: 22px; vertical-align: -5px; }
+.icon-dot { width: 8px; height: 8px; vertical-align: 0; }
+
 .date-group-0 { background: var(--surface); }
 .date-group-1 { background: #f5f6f8; }
 .date-group-0,
