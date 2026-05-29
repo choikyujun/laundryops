@@ -173,3 +173,11 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
 }
 .error-msg { color: var(--danger); font-size: 12px; margin-top: 4px; display: none; }
 .modal-content input.error { border-color: var(--danger); background-color: #fff5f5; }
+
+/* 어드민 거래명세서 목록 — 날짜 그룹 줄무늬 */
+.date-group-0 { background: var(--surface); }
+.date-group-1 { background: #f5f6f8; }
+.date-group-0,
+.date-group-1 { transition: background-color 0.12s ease; cursor: pointer; }
+.date-group-0:hover,
+.date-group-1:hover { background: #e6f1fb; }
