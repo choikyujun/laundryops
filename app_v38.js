@@ -1857,9 +1857,6 @@ window.deleteStaff = async function(sId) {
     if(typeof window.loadAdminStaffList === 'function') window.loadAdminStaffList();
 };
 window.openStaffModal = async function() {
-  // [추가] 라이트 요금제(레벨 1)일 경우 직원 관리 제한 (비즈니스 이상 필요)
-  if (!await window.checkAccess('STAFF_MANAGEMENT', null, '라이트 요금제에서 직원등록은 1명 입니다. [요금제 업그레이드] 해주세요')) return;
-
   ['st_name', 'st_loginId', 'st_loginPw'].forEach(id => {
       const el = document.getElementById(id);
       if(el) { el.value = ''; el.style.borderColor = 'var(--border)'; }
@@ -6028,7 +6025,7 @@ window.openHotelModal = async function(hId = null) {
 };
 
 window.saveNewHotel = async function() {
-    // [추가] 요금제 제한 확인 (비즈니스 미만일 경우 제한)
+    // [추가] 요금제 제한 확인 (라이트 요금제 거래처 10개 제한)
     const { data: f } = await window.mySupabase.from('factories').select('plan').eq('id', currentFactoryId).single();
     if (!await window.checkHotelLimit(f)) return;
 
