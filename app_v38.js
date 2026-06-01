@@ -6699,8 +6699,8 @@ window.viewInvoiceDetail = async function(id) {
     console.log("DEBUG: Final unified calculateAdminDashStats started");
     const curMonth = document.getElementById('adminStatsMonth')?.value || getTodayString().substring(0, 7);
     const todayStr = getTodayString();
-    
-    // YYYY-MM
+
+    // 카드2: curMonth 기준 전월 비교
     const parts = curMonth.split('-');
     let prevMonthD = new Date(parseInt(parts[0]), parseInt(parts[1]) - 2, 1);
     let pM = prevMonthD.getMonth() + 1;
@@ -6712,14 +6712,48 @@ window.viewInvoiceDetail = async function(id) {
     const prevMonthStart = prevMonthStr + '-01';
     const prevMonthEnd = prevMonthStr + '-' + String(cappedDay).padStart(2, '0');
 
+    // 카드1: today 기준 전월 같은날 (단일일)
+    const todayParts = todayStr.split('-');
+    const todayYear = todayParts[0];
+    const todayMonthNum = parseInt(todayParts[1]);
+    let tpMonthD = new Date(parseInt(todayYear), todayMonthNum - 2, 1);
+    const tpM = tpMonthD.getMonth() + 1;
+    const tpY = tpMonthD.getFullYear();
+    const todayPrevMonthStr = tpY + '-' + String(tpM).padStart(2, '0');
+    const todayPrevMonthLastDay = new Date(parseInt(todayYear), todayMonthNum - 1, 0).getDate();
+    const todayCappedDay = Math.min(todayDay, todayPrevMonthLastDay);
+    const prevDayStr = todayPrevMonthStr + '-' + String(todayCappedDay).padStart(2, '0');
+
+    // 카드3: 올해/전년 YTD (today 기준, 윤년 캡 포함)
+    const curYear = todayYear;
+    const curYearStart = curYear + '-01-01';
+    const prevYearNum = parseInt(curYear) - 1;
+    const prevYear = String(prevYearNum);
+    const prevYearMonthLastDay = new Date(prevYearNum, todayMonthNum, 0).getDate();
+    const prevYearEndDay = Math.min(todayDay, prevYearMonthLastDay);
+    const prevYearEndStr = prevYear + '-' + String(todayMonthNum).padStart(2, '0') + '-' + String(prevYearEndDay).padStart(2, '0');
+    const prevYearStart = prevYear + '-01-01';
+
+    function growthHtml(cur, prev) {
+        if (prev === 0 && cur > 0) return `<span style="color:var(--success);">&#9650; 100.0%</span>`;
+        if (prev > 0) {
+            const g = ((cur - prev) / prev) * 100;
+            return g >= 0
+                ? `<span style="color:var(--success);">&#9650; ${g.toFixed(1)}%</span>`
+                : `<span style="color:var(--danger);">&#9660; ${Math.abs(g).toFixed(1)}%</span>`;
+        }
+        return `<span style="color:var(--secondary);">- 0.0%</span>`;
+    }
+
     let todayRev = 0, monthRev = 0, prevMonthRev = 0;
+    let prevDayRev = 0, yearRev = 0, prevYearRev = 0;
     const hotelSales = {};
 
     // 1. 단가제 매출 (invoices)
     const { data: invData } = await window.mySupabase.from('invoices')
         .select('date, total_amount, hotel_id, staff_name, hotels(name, contract_type)')
         .eq('factory_id', currentFactoryId);
-    
+
     if(invData) {
         invData.forEach(inv => {
             // [수정] 대시보드 통계 계산 시 차감 명세서는 완전히 제외하여 매출 합계를 왜곡하지 않게 함
@@ -6728,11 +6762,14 @@ window.viewInvoiceDetail = async function(id) {
             const hName = inv.hotels ? inv.hotels.name : '알수없음';
             const supplyPrice = inv.total_amount;
             if(inv.date === todayStr) todayRev += supplyPrice;
+            if(inv.date === prevDayStr) prevDayRev += supplyPrice;
             if(inv.date.startsWith(curMonth) && inv.date <= todayStr) {
                 monthRev += supplyPrice;
                 hotelSales[hName] = (hotelSales[hName] || 0) + supplyPrice;
             }
             if(inv.date >= prevMonthStart && inv.date <= prevMonthEnd) prevMonthRev += supplyPrice;
+            if(inv.date >= curYearStart && inv.date <= todayStr) yearRev += supplyPrice;
+            if(inv.date >= prevYearStart && inv.date <= prevYearEndStr) prevYearRev += supplyPrice;
         });
     }
 
@@ -6740,7 +6777,7 @@ window.viewInvoiceDetail = async function(id) {
     const { data: hotelData } = await window.mySupabase.from('hotels')
         .select('name, contract_type, fixed_amount, created_at')
         .eq('factory_id', currentFactoryId);
-        
+
     let activeHotels = 0;
     if(hotelData) {
         hotelData.forEach(h => {
@@ -6748,41 +6785,60 @@ window.viewInvoiceDetail = async function(id) {
             if(h.contract_type === 'fixed') {
                 const fixAmt = Number(h.fixed_amount || 0);
                 const createdMonth = h.created_at ? h.created_at.substring(0, 7) : '2000-01';
-                
+
+                // 카드2: 이번달
                 if (curMonth >= createdMonth) {
                     monthRev += fixAmt;
                     hotelSales[h.name] = (hotelSales[h.name] || 0) + fixAmt;
                 }
+                // 카드2 성장률: 전월
                 if (prevMonthStr >= createdMonth) {
                     prevMonthRev += fixAmt;
+                }
+                // 카드3: 올해 YTD (1월~today's month, 각 달 합산)
+                let mPtr = new Date(parseInt(curYear), 0, 1);
+                const mEnd = new Date(parseInt(curYear), todayMonthNum - 1, 1);
+                while (mPtr <= mEnd) {
+                    const mStr = mPtr.getFullYear() + '-' + String(mPtr.getMonth()+1).padStart(2,'0');
+                    if (mStr >= createdMonth) yearRev += fixAmt;
+                    mPtr.setMonth(mPtr.getMonth() + 1);
+                }
+                // 카드3 성장률: 전년 YTD (1월~today's month in prev year)
+                let pmPtr = new Date(prevYearNum, 0, 1);
+                const pmEnd = new Date(prevYearNum, todayMonthNum - 1, 1);
+                while (pmPtr <= pmEnd) {
+                    const pmStr = pmPtr.getFullYear() + '-' + String(pmPtr.getMonth()+1).padStart(2,'0');
+                    if (pmStr >= createdMonth) prevYearRev += fixAmt;
+                    pmPtr.setMonth(pmPtr.getMonth() + 1);
                 }
             }
         });
     }
 
-    // UI 업데이트
-    const el1 = document.getElementById('adminTodayRevenue');
-    const el2 = document.getElementById('adminMonthlyRevenue');
-    if(el1) el1.innerText = todayRev.toLocaleString() + '원';
-    if(el2) el2.innerText = monthRev.toLocaleString() + '원';
-    
-    const el3 = document.getElementById('adminGrowthRate');
-    if(el3) {
-        let growthHtml = '';
-        if (prevMonthRev === 0 && monthRev > 0) {
-            // 전월 0원 → 이번달 매출 있음 = 100% 성장
-            growthHtml = `<span style="color:var(--success);">&#9650; 100.0%</span>`;
-        } else if (prevMonthRev > 0) {
-            const growth = ((monthRev - prevMonthRev) / prevMonthRev) * 100;
-            growthHtml = growth >= 0
-                ? `<span style="color:var(--success);">&#9650; ${growth.toFixed(1)}%</span>`
-                : `<span style="color:var(--danger);">&#9660; ${Math.abs(growth).toFixed(1)}%</span>`;
-        } else {
-            growthHtml = `<span style="color:var(--secondary);">- 0.0%</span>`;
-        }
-        el3.innerHTML = growthHtml;
+    // 카드1: 오늘
+    const elTD = document.getElementById('adminTodayDate');
+    if (elTD) {
+        const weekday = new Date(todayStr + 'T00:00:00').toLocaleDateString('ko-KR', {timeZone: 'Asia/Seoul', weekday: 'short'});
+        elTD.innerText = `${parseInt(todayParts[1])}월 ${parseInt(todayParts[2])}일 (${weekday})`;
     }
-    
+    const el1 = document.getElementById('adminTodayRevenue');
+    if(el1) el1.innerText = todayRev.toLocaleString() + '원';
+    const elTG = document.getElementById('adminTodayGrowth');
+    if(elTG) elTG.innerHTML = growthHtml(todayRev, prevDayRev);
+
+    // 카드2: 이번달
+    const el2 = document.getElementById('adminMonthlyRevenue');
+    if(el2) el2.innerText = monthRev.toLocaleString() + '원';
+    const elMG = document.getElementById('adminMonthGrowth');
+    if(elMG) elMG.innerHTML = growthHtml(monthRev, prevMonthRev);
+
+    // 카드3: 올해
+    const el3 = document.getElementById('adminYearRevenue');
+    if(el3) el3.innerText = yearRev.toLocaleString() + '원';
+    const elYG = document.getElementById('adminYearGrowth');
+    if(elYG) elYG.innerHTML = growthHtml(yearRev, prevYearRev);
+
+    // 카드4: 거래처/직원
     const el4 = document.getElementById('adminSummaryCount');
     if(el4) {
         const { count: staffCount } = await window.mySupabase.from('staff').select('*', { count: 'exact', head: true }).eq('factory_id', currentFactoryId);
@@ -6792,16 +6848,15 @@ window.viewInvoiceDetail = async function(id) {
     // Top 10 그리기
     const titleEl = document.getElementById('rankingTitle');
     if (titleEl) titleEl.innerHTML = `${parts[0]}년 ${parts[1]}월 매출 TOP`;
-    
+
     const rankingArea = document.getElementById('adminTopRankingArea');
     if(rankingArea) {
         const sorted = Object.entries(hotelSales).sort((a,b) => b[1] - a[1]);
         if(sorted.length === 0) {
             rankingArea.innerHTML = '<div style="color:gray; padding:10px;">데이터가 없습니다.</div>';
         } else {
-            rankingArea.innerHTML = '<table class="admin-table"><thead><tr><th>순위</th><th>거래처명</th><th>이번 달 매출</th></tr></thead><tbody>' + 
+            rankingArea.innerHTML = '<table class="admin-table"><thead><tr><th>순위</th><th>거래처명</th><th>이번 달 매출</th></tr></thead><tbody>' +
                 sorted.map((f, i) => `<tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right;">${f[1].toLocaleString()}원</td></tr>`).join('') + '</tbody></table>';
-            // 스크롤은 HTML에서 고정 처리 (max-height:320px, overflow-y:auto, -webkit-overflow-scrolling:touch)
         }
     }
     console.log("DEBUG: Final hotelSales after render:", hotelSales);
