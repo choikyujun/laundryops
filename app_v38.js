@@ -6819,8 +6819,12 @@ window.viewInvoiceDetail = async function(id) {
     const elTD = document.getElementById('adminTodayDate');
     if (elTD) {
         const weekday = new Date(todayStr + 'T00:00:00').toLocaleDateString('ko-KR', {timeZone: 'Asia/Seoul', weekday: 'short'});
-        elTD.innerText = `${parseInt(todayParts[1])}월 ${parseInt(todayParts[2])}일 (${weekday})`;
+        elTD.innerText = `오늘 ${parseInt(todayParts[1])}월 ${parseInt(todayParts[2])}일(${weekday})`;
     }
+    const elMH = document.getElementById('adminMonthHeader');
+    if (elMH) elMH.innerText = `이번 달 (${parseInt(parts[1])}월)`;
+    const elYH = document.getElementById('adminYearHeader');
+    if (elYH) elYH.innerText = `올해 (${todayYear}년)`;
     const rToday = Math.round(todayRev), rPrevDay = Math.round(prevDayRev);
     const rMonth = Math.round(monthRev), rPrevMonth = Math.round(prevMonthRev);
     const rYear = Math.round(yearRev), rPrevYear = Math.round(prevYearRev);
