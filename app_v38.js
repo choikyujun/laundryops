@@ -6744,6 +6744,9 @@ window.viewInvoiceDetail = async function(id) {
         }
         return `<span style="color:var(--secondary);">- 0.0%</span>`;
     }
+    function daysIn(yearNum, monthNum) {
+        return new Date(yearNum, monthNum, 0).getDate();
+    }
 
     let todayRev = 0, monthRev = 0, prevMonthRev = 0;
     let prevDayRev = 0, yearRev = 0, prevYearRev = 0;
@@ -6785,31 +6788,48 @@ window.viewInvoiceDetail = async function(id) {
             if(h.contract_type === 'fixed') {
                 const fixAmt = Number(h.fixed_amount || 0);
                 const createdMonth = h.created_at ? h.created_at.substring(0, 7) : '2000-01';
+                const todayMonthStr = todayYear + '-' + String(todayMonthNum).padStart(2, '0');
 
-                // 카드2: 이번달
+                // 카드1: 오늘 일할 (today 기준 달 ÷ 그 달 일수 × 1)
+                if (todayMonthStr >= createdMonth) {
+                    todayRev += fixAmt / daysIn(parseInt(todayYear), todayMonthNum);
+                }
+                // 카드1 성장률: 전월 같은날 일할
+                if (todayPrevMonthStr >= createdMonth) {
+                    prevDayRev += fixAmt / daysIn(tpY, tpM);
+                }
+
+                // 카드2: 이번달 일할 (curMonth 기준 ÷ 그 달 일수 × applyDays)
                 if (curMonth >= createdMonth) {
-                    monthRev += fixAmt;
-                    hotelSales[h.name] = (hotelSales[h.name] || 0) + fixAmt;
+                    const cY = parseInt(parts[0]), cM = parseInt(parts[1]);
+                    const cDays = daysIn(cY, cM);
+                    const applyDays = (curMonth === todayMonthStr) ? todayDay : cDays;
+                    const fixForMonth = fixAmt / cDays * applyDays;
+                    monthRev += fixForMonth;
+                    hotelSales[h.name] = (hotelSales[h.name] || 0) + fixForMonth;
                 }
-                // 카드2 성장률: 전월
+                // 카드2 성장률: 전월 cappedDay 일할
                 if (prevMonthStr >= createdMonth) {
-                    prevMonthRev += fixAmt;
+                    prevMonthRev += fixAmt / daysIn(pY, pM) * cappedDay;
                 }
-                // 카드3: 올해 YTD (1월~today's month, 각 달 합산)
-                let mPtr = new Date(parseInt(curYear), 0, 1);
-                const mEnd = new Date(parseInt(curYear), todayMonthNum - 1, 1);
-                while (mPtr <= mEnd) {
-                    const mStr = mPtr.getFullYear() + '-' + String(mPtr.getMonth()+1).padStart(2,'0');
-                    if (mStr >= createdMonth) yearRev += fixAmt;
-                    mPtr.setMonth(mPtr.getMonth() + 1);
+
+                // 카드3: 올해 YTD — 완료 달은 전액, 이번달은 일할
+                for (let m = 1; m <= todayMonthNum; m++) {
+                    const mStr = curYear + '-' + String(m).padStart(2, '0');
+                    if (mStr >= createdMonth) {
+                        const mDays = daysIn(parseInt(curYear), m);
+                        const mApply = (m === todayMonthNum) ? todayDay : mDays;
+                        yearRev += fixAmt / mDays * mApply;
+                    }
                 }
-                // 카드3 성장률: 전년 YTD (1월~today's month in prev year)
-                let pmPtr = new Date(prevYearNum, 0, 1);
-                const pmEnd = new Date(prevYearNum, todayMonthNum - 1, 1);
-                while (pmPtr <= pmEnd) {
-                    const pmStr = pmPtr.getFullYear() + '-' + String(pmPtr.getMonth()+1).padStart(2,'0');
-                    if (pmStr >= createdMonth) prevYearRev += fixAmt;
-                    pmPtr.setMonth(pmPtr.getMonth() + 1);
+                // 카드3 성장률: 전년 YTD — 완료 달은 전액, 마지막달은 윤년캡 일할
+                for (let m = 1; m <= todayMonthNum; m++) {
+                    const mStr = prevYear + '-' + String(m).padStart(2, '0');
+                    if (mStr >= createdMonth) {
+                        const mDays = daysIn(prevYearNum, m);
+                        const mApply = (m === todayMonthNum) ? prevYearEndDay : mDays;
+                        prevYearRev += fixAmt / mDays * mApply;
+                    }
                 }
             }
         });
@@ -6821,22 +6841,26 @@ window.viewInvoiceDetail = async function(id) {
         const weekday = new Date(todayStr + 'T00:00:00').toLocaleDateString('ko-KR', {timeZone: 'Asia/Seoul', weekday: 'short'});
         elTD.innerText = `${parseInt(todayParts[1])}월 ${parseInt(todayParts[2])}일 (${weekday})`;
     }
+    const rToday = Math.round(todayRev), rPrevDay = Math.round(prevDayRev);
+    const rMonth = Math.round(monthRev), rPrevMonth = Math.round(prevMonthRev);
+    const rYear = Math.round(yearRev), rPrevYear = Math.round(prevYearRev);
+
     const el1 = document.getElementById('adminTodayRevenue');
-    if(el1) el1.innerText = todayRev.toLocaleString() + '원';
+    if(el1) el1.innerText = rToday.toLocaleString() + '원';
     const elTG = document.getElementById('adminTodayGrowth');
-    if(elTG) elTG.innerHTML = growthHtml(todayRev, prevDayRev);
+    if(elTG) elTG.innerHTML = growthHtml(rToday, rPrevDay);
 
     // 카드2: 이번달
     const el2 = document.getElementById('adminMonthlyRevenue');
-    if(el2) el2.innerText = monthRev.toLocaleString() + '원';
+    if(el2) el2.innerText = rMonth.toLocaleString() + '원';
     const elMG = document.getElementById('adminMonthGrowth');
-    if(elMG) elMG.innerHTML = growthHtml(monthRev, prevMonthRev);
+    if(elMG) elMG.innerHTML = growthHtml(rMonth, rPrevMonth);
 
     // 카드3: 올해
     const el3 = document.getElementById('adminYearRevenue');
-    if(el3) el3.innerText = yearRev.toLocaleString() + '원';
+    if(el3) el3.innerText = rYear.toLocaleString() + '원';
     const elYG = document.getElementById('adminYearGrowth');
-    if(elYG) elYG.innerHTML = growthHtml(yearRev, prevYearRev);
+    if(elYG) elYG.innerHTML = growthHtml(rYear, rPrevYear);
 
     // 카드4: 거래처/직원
     const el4 = document.getElementById('adminSummaryCount');
