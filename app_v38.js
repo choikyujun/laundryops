@@ -6788,48 +6788,28 @@ window.viewInvoiceDetail = async function(id) {
             if(h.contract_type === 'fixed') {
                 const fixAmt = Number(h.fixed_amount || 0);
                 const createdMonth = h.created_at ? h.created_at.substring(0, 7) : '2000-01';
-                const todayMonthStr = todayYear + '-' + String(todayMonthNum).padStart(2, '0');
 
-                // 카드1: 오늘 일할 (today 기준 달 ÷ 그 달 일수 × 1)
-                if (todayMonthStr >= createdMonth) {
-                    todayRev += fixAmt / daysIn(parseInt(todayYear), todayMonthNum);
-                }
-                // 카드1 성장률: 전월 같은날 일할
-                if (todayPrevMonthStr >= createdMonth) {
-                    prevDayRev += fixAmt / daysIn(tpY, tpM);
-                }
+                // 카드1: 정액제 기여 없음 (단가제만)
 
-                // 카드2: 이번달 일할 (curMonth 기준 ÷ 그 달 일수 × applyDays)
+                // 카드2: 이번달 정액 전액 (계약 시작월 이후만)
                 if (curMonth >= createdMonth) {
-                    const cY = parseInt(parts[0]), cM = parseInt(parts[1]);
-                    const cDays = daysIn(cY, cM);
-                    const applyDays = (curMonth === todayMonthStr) ? todayDay : cDays;
-                    const fixForMonth = fixAmt / cDays * applyDays;
-                    monthRev += fixForMonth;
-                    hotelSales[h.name] = (hotelSales[h.name] || 0) + fixForMonth;
+                    monthRev += fixAmt;
+                    hotelSales[h.name] = (hotelSales[h.name] || 0) + fixAmt;
                 }
-                // 카드2 성장률: 전월 cappedDay 일할
+                // 카드2 성장률: 전월 정액 전액
                 if (prevMonthStr >= createdMonth) {
-                    prevMonthRev += fixAmt / daysIn(pY, pM) * cappedDay;
+                    prevMonthRev += fixAmt;
                 }
 
-                // 카드3: 올해 YTD — 완료 달은 전액, 이번달은 일할
+                // 카드3: 올해 1~현재월 각 달 전액 합산
                 for (let m = 1; m <= todayMonthNum; m++) {
                     const mStr = curYear + '-' + String(m).padStart(2, '0');
-                    if (mStr >= createdMonth) {
-                        const mDays = daysIn(parseInt(curYear), m);
-                        const mApply = (m === todayMonthNum) ? todayDay : mDays;
-                        yearRev += fixAmt / mDays * mApply;
-                    }
+                    if (mStr >= createdMonth) yearRev += fixAmt;
                 }
-                // 카드3 성장률: 전년 YTD — 완료 달은 전액, 마지막달은 윤년캡 일할
+                // 카드3 성장률: 전년 1~todayMonth 각 달 전액 합산
                 for (let m = 1; m <= todayMonthNum; m++) {
                     const mStr = prevYear + '-' + String(m).padStart(2, '0');
-                    if (mStr >= createdMonth) {
-                        const mDays = daysIn(prevYearNum, m);
-                        const mApply = (m === todayMonthNum) ? prevYearEndDay : mDays;
-                        prevYearRev += fixAmt / mDays * mApply;
-                    }
+                    if (mStr >= createdMonth) prevYearRev += fixAmt;
                 }
             }
         });
