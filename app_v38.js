@@ -505,17 +505,22 @@ window.loadAdminPayment = function() {
 
 // [v37 버그픽스] invoices 테이블 조회 시 invoice_items 조인 제거하여 400 에러 해결
 window.isAdminInvoicesLoading = false;
+// [v38 페이징] 월정산 발송내역 페이징 상태
+let _sentLogAllData = [];
+let _sentLogPage = 1;
+const SENT_LOG_PAGE_SIZE = 50;
+
 window.loadAdminSentList = async function() {
     console.log("DEBUG: loadAdminSentList 시작");
     if (window.isAdminInvoicesLoading) return;
     window.isAdminInvoicesLoading = true;
-    
+
     const tbody = document.getElementById('adminSentList');
     if(!tbody) { console.log("DEBUG: adminSentList 엘리먼트 없음"); window.isAdminInvoicesLoading = false; return; }
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">목록 불러오는 중...</td></tr>';
 
     console.log("DEBUG: currentFactoryId:", currentFactoryId);
-    
+
     // SQL-First: sent_logs 테이블에서 조회
     const { data: logs, error } = await window.mySupabase
         .from('sent_logs')
@@ -525,11 +530,11 @@ window.loadAdminSentList = async function() {
 
     console.log("DEBUG: sent_logs response:", { logs, error });
 
-    if(error) { 
+    if(error) {
         console.error("DEBUG: AdminSentList Supabase Error:", error);
-        tbody.innerHTML = `<tr><td colspan="6" style="color:red;">에러: ${error.message}</td></tr>`; 
+        tbody.innerHTML = `<tr><td colspan="6" style="color:red;">에러: ${error.message}</td></tr>`;
         window.isAdminInvoicesLoading = false;
-        return; 
+        return;
     }
 
     // 호텔 이름 매핑용 조회 (별도 실행)
@@ -540,38 +545,105 @@ window.loadAdminSentList = async function() {
     const searchEl = document.getElementById('adminSentSearch');
     const searchTerm = searchEl ? searchEl.value.toLowerCase() : '';
 
-    let newHtml = '';
-    const filteredLogs = logs ? logs.filter(log => {
-        const hName = (hotelMap[log.hotel_id] || '거래처없음').toLowerCase();
-        return hName.includes(searchTerm) || log.period.toLowerCase().includes(searchTerm);
-    }) : [];
+    _sentLogAllData = (logs || [])
+        .filter(log => {
+            const hn = (hotelMap[log.hotel_id] || '거래처없음').toLowerCase();
+            return hn.includes(searchTerm) || (log.period || '').toLowerCase().includes(searchTerm);
+        })
+        .map(log => ({ ...log, hName: hotelMap[log.hotel_id] || '거래처없음' }));
 
-    if(filteredLogs.length > 0) {
-        filteredLogs.forEach(log => {
-            const hName = hotelMap[log.hotel_id] || '거래처없음';
-            const sentDate = log.sent_at ? log.sent_at.substring(0, 10) : '-';
-            // 데이터 검증: total_amount가 없으면 0으로 처리
-            const rawAmount = Number(log.total_amount) || 0;
-            const totalWithTax = Math.round(rawAmount * 1.1);
-            
-            newHtml += `<tr>
-                <td>${log.period}</td>
-                <td>${hName}</td>
-                <td>${totalWithTax.toLocaleString()}원</td>
-                <td>${sentDate}</td>
-                <td>
-                    <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; background:#16a34a; color:white; border:1px solid #16a34a; border-radius:4px; margin-right:5px; height:auto; display:inline-block;" onclick="downloadSentLogExcel('${log.id}', '${log.period}')">Excel</button>
-                    <button class="btn btn-neutral" style="background:var(--primary); color:white; padding:4px 8px; font-size:11px; border:1px solid var(--primary); border-radius:4px; height:auto; display:inline-block;" onclick="viewSentDetail('${hName}', '${log.period}', '${log.id}', false, '${log.hotel_id}')">내역확인</button>
-                    <button class="btn btn-danger" style="padding:4px 8px; font-size:11px; margin-left:5px; border-radius:4px; height:auto; display:inline-block;" onclick="deleteSentLog('${log.id}')">발송취소</button>
-                </td>
-            </tr>`;
-        });
-    } else {
-        newHtml = '<tr><td colspan="6" style="text-align:center;">발송 내역이 없습니다.</td></tr>';
-    }
-    tbody.innerHTML = newHtml;
+    _sentLogPage = 1;
+    renderSentLogPage();
     window.isAdminInvoicesLoading = false;
 };
+
+function renderSentLogPage() {
+    const tbody = document.getElementById('adminSentList');
+    if (!tbody) return;
+
+    const total = _sentLogAllData.length;
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">발송 내역이 없습니다.</td></tr>';
+        renderSentLogPaging(0);
+        return;
+    }
+
+    const totalPages = Math.ceil(total / SENT_LOG_PAGE_SIZE);
+    const start = (_sentLogPage - 1) * SENT_LOG_PAGE_SIZE;
+    const pageData = _sentLogAllData.slice(start, start + SENT_LOG_PAGE_SIZE);
+
+    let newHtml = '';
+    let colorGroup = -1;
+    let lastPeriodMonth = '';
+
+    pageData.forEach(log => {
+        const periodMonth = log.period ? log.period.substring(0, 7) : '';
+        if (periodMonth !== lastPeriodMonth) { colorGroup++; lastPeriodMonth = periodMonth; }
+        const bg = colorGroup % 2 === 0 ? '#ffffff' : '#f5f6f8';
+        const sentDate = log.sent_at ? log.sent_at.substring(0, 10) : '-';
+        const rawAmount = Number(log.total_amount) || 0;
+        const totalWithTax = Math.round(rawAmount * 1.1);
+
+        newHtml += `<tr style="background:${bg};" onmouseover="this.style.filter='brightness(0.96)'" onmouseout="this.style.filter=''">
+            <td>${log.period}</td>
+            <td>${log.hName}</td>
+            <td>${totalWithTax.toLocaleString()}원</td>
+            <td>${sentDate}</td>
+            <td>
+                <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; background:#16a34a; color:white; border:1px solid #16a34a; border-radius:4px; margin-right:5px; height:auto; display:inline-block;" onclick="downloadSentLogExcel('${log.id}', '${log.period}')">Excel</button>
+                <button class="btn btn-neutral" style="background:var(--primary); color:white; padding:4px 8px; font-size:11px; border:1px solid var(--primary); border-radius:4px; height:auto; display:inline-block;" onclick="viewSentDetail('${log.hName}', '${log.period}', '${log.id}', false, '${log.hotel_id}')">내역확인</button>
+                <button class="btn btn-danger" style="padding:4px 8px; font-size:11px; margin-left:5px; border-radius:4px; height:auto; display:inline-block;" onclick="deleteSentLog('${log.id}')">발송취소</button>
+            </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = newHtml;
+    renderSentLogPaging(totalPages);
+}
+
+function renderSentLogPaging(totalPages) {
+    const paging = document.getElementById('adminSentPagination');
+    if (!paging) return;
+    paging.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    const total = _sentLogAllData.length;
+    const btnStyle = (active) => `padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font-size:13px; font-weight:${active?'700':'400'}; background:${active?'var(--primary)':'white'}; color:${active?'white':'#334155'};`;
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '◀';
+    prevBtn.style.cssText = btnStyle(false);
+    prevBtn.disabled = _sentLogPage === 1;
+    prevBtn.style.opacity = _sentLogPage === 1 ? '0.4' : '1';
+    prevBtn.onclick = () => { _sentLogPage--; renderSentLogPage(); };
+    paging.appendChild(prevBtn);
+
+    const maxShow = 5;
+    let pageStart = Math.max(1, _sentLogPage - Math.floor(maxShow / 2));
+    let pageEnd = Math.min(totalPages, pageStart + maxShow - 1);
+    if (pageEnd - pageStart < maxShow - 1) pageStart = Math.max(1, pageEnd - maxShow + 1);
+
+    for (let i = pageStart; i <= pageEnd; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.style.cssText = btnStyle(i === _sentLogPage);
+        btn.onclick = ((p) => () => { _sentLogPage = p; renderSentLogPage(); })(i);
+        paging.appendChild(btn);
+    }
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = '▶';
+    nextBtn.style.cssText = btnStyle(false);
+    nextBtn.disabled = _sentLogPage === totalPages;
+    nextBtn.style.opacity = _sentLogPage === totalPages ? '0.4' : '1';
+    nextBtn.onclick = () => { _sentLogPage++; renderSentLogPage(); };
+    paging.appendChild(nextBtn);
+
+    const info = document.createElement('span');
+    info.style.cssText = 'font-size:12px; color:var(--secondary); margin-left:8px;';
+    info.textContent = `총 ${total}건 / ${_sentLogPage}페이지 (${totalPages}페이지)`;
+    paging.appendChild(info);
+}
 
 window.deleteSentLog = async function(logId) {
     if(!confirm('정말 발송 기록을 취소(삭제)하시겠습니까?\n(해당 발송에 포함된 월말 차감 데이터도 함께 삭제됩니다.)')) return;
@@ -7581,11 +7653,15 @@ window.viewSentDetail = async function(hotelName, period, sentLogId, isPartnerVi
         <button onclick="closeModal('sendInvoiceModal')" style="padding:10px 20px; cursor:pointer; font-size:14px; font-weight:700; background:#e2e8f0; color:#374151; border:none; border-radius:8px;">닫기</button>
     </div>`;
 
-    document.getElementById('sendInvoiceArea').innerHTML = reportHtml;
+    const sendArea = document.getElementById('sendInvoiceArea');
+    sendArea.dataset.hotelName = hotelName;
+    sendArea.dataset.periodStart = sDate || '';
+    sendArea.dataset.periodEnd = eDate || '';
+    sendArea.innerHTML = reportHtml;
     window.openSendInvoiceModal();
 };
 
-// 3. 엑셀 다운로드 수정 
+// 3. 엑셀 다운로드 수정
 window.downloadSentLogExcel = async function(logId, displayPeriod) {
     const { data: log } = await window.mySupabase
         .from('sent_logs').select('id, period, total_amount, hotel_id, hotels(name)').eq('id', logId).single();

@@ -32,7 +32,13 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = title.replace(/[\/\\:*?"<>|]/g, '_') + '.html';
+    var area = document.getElementById('sendInvoiceArea');
+    var hName = (area && area.dataset.hotelName) ? area.dataset.hotelName : title;
+    var sDate = (area && area.dataset.periodStart) || '';
+    var eDate = (area && area.dataset.periodEnd) || '';
+    var safeHotel = hName.replace(/[\/\\:*?"<>|]/g, '_');
+    var nameParts = [safeHotel, sDate, eDate].filter(Boolean);
+    a.download = nameParts.join('_') + '.html';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
