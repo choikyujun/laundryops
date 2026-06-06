@@ -200,6 +200,7 @@
       .from('hotel_item_prices')
       .select('name, category_name')
       .eq('hotel_id', hotelId)
+      .eq('price_type', isSpecial ? 'special' : 'general')
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
@@ -237,7 +238,7 @@
     if (isSpecial) {
       const { data: catData } = await window.mySupabase
         .from('hotel_categories')
-        .select('name').eq('hotel_id', hotelId).order('created_at');
+        .select('name').eq('hotel_id', hotelId).eq('price_type', 'special').order('created_at');
       const orderedCats = catData ? catData.map(function (c) { return c.name; }) : [];
       if (!orderedCats.includes('기타')) orderedCats.push('기타');
 

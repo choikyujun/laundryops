@@ -6,3 +6,4 @@ old/
 archive/
 *.xcworkspace
 node_modules/
+supabase/.temp/

@@ -30,7 +30,7 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
       /* 모바일 최적화 */
       @media (max-width: 768px) {
           .dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
-          .stats-grid { grid-template-columns: 1fr !important; gap: 15px; }
+          .stats-grid { grid-template-columns: 1fr !important; gap: 15px; flex-direction: column !important; }
           .admin-table { display: block !important; overflow-x: auto !important; width: 100% !important; }
           .admin-table thead, .admin-table tbody, .admin-table tr { display: table !important; width: 100% !important; table-layout: fixed !important; }
           .admin-table th, .admin-table td { padding: 8px 4px !important; font-size: 11px !important; word-break: break-all !important; }
@@ -117,7 +117,7 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
   .dashboard-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
   .super-card { padding: 12px !important; }
   .super-card-value { font-size: 16px !important; }
-  .stats-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .stats-grid { grid-template-columns: 1fr !important; gap: 12px !important; flex-direction: column !important; }
 
   /* chart-container: 넘침 방지 핵심 */
   .chart-container {
