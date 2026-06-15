@@ -522,6 +522,7 @@ window.loadAdminSentList = async function() {
     console.log("DEBUG: currentFactoryId:", currentFactoryId);
 
     // SQL-First: sent_logs 테이블에서 조회
+    // [점검 메모] 날짜범위/limit 없음. 현재 건수 적어 안전하나 누적 시 1000-row 캡 위험. 데이터 증가 시 재점검.
     const { data: logs, error } = await window.mySupabase
         .from('sent_logs')
         .select('id, period, total_amount, sent_at, hotel_id')
@@ -7100,19 +7101,37 @@ window.updateTrendChartOnly = async function() {
     
     const hotelFilter = document.getElementById('adminTrendHotelFilter')?.value || 'all';
     
-    // 1. 단가제 매출
-    let invQuery = window.mySupabase.from('invoices').select('date, total_amount, hotel_id, hotels!inner(contract_type)').eq('factory_id', currentFactoryId).eq('hotels.contract_type', 'unit');
-    if (hotelFilter !== 'all') invQuery = invQuery.eq('hotel_id', hotelFilter);
-    const { data: invData } = await invQuery;
-    
-    if(invData) {
-        invData.forEach(inv => {
-            // [수정] 대시보드 통계 계산 시 차감 명세서는 완전히 제외하여 매출 합계를 왜곡하지 않게 함
-            if (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) return;
-            const mKey = inv.date.substring(0, 7);
-            if(monthlyTrend[mKey] !== undefined) monthlyTrend[mKey] += inv.total_amount;
-        });
-    }
+    // 1. 단가제 매출 — 월별 병렬 쿼리 (Supabase 1000-row 캡 우회, 매출 카드와 동일 방식)
+    const trendTodayStr = getTodayString();
+    const trendMonthKeys = Object.keys(monthlyTrend).sort();
+    const trendInvSel = 'date, total_amount, hotel_id, hotels!inner(contract_type)';
+
+    const trendMonthQueries = trendMonthKeys.map(mKey => {
+        const [my, mm] = mKey.split('-');
+        const mStart = mKey + '-01';
+        const mEnd = mKey === curMonth
+            ? trendTodayStr
+            : mKey + '-' + String(new Date(parseInt(my), parseInt(mm), 0).getDate()).padStart(2, '0');
+        let q = window.mySupabase.from('invoices').select(trendInvSel)
+            .eq('factory_id', currentFactoryId)
+            .eq('hotels.contract_type', 'unit')
+            .gte('date', mStart)
+            .lte('date', mEnd);
+        if (hotelFilter !== 'all') q = q.eq('hotel_id', hotelFilter);
+        return q;
+    });
+
+    const trendMonthResults = await Promise.all(trendMonthQueries);
+
+    trendMonthResults.forEach(({ data: invData }) => {
+        if (invData) {
+            invData.forEach(inv => {
+                if (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) return;
+                const mKey = inv.date.substring(0, 7);
+                if (monthlyTrend[mKey] !== undefined) monthlyTrend[mKey] += inv.total_amount;
+            });
+        }
+    });
     
     // 2. 정액제 매출
     let hotelQuery = window.mySupabase.from('hotels').select('id, name, contract_type, fixed_amount, created_at').eq('factory_id', currentFactoryId);

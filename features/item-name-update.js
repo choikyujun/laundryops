@@ -33,6 +33,7 @@
 
         if (updateErr) return { error: updateErr };
 
+        // [점검 메모] hotel_id만 필터, 날짜범위 없음. 호텔당 명세서 수 적어 현재 안전하나 누적 시 1000-row 캡 위험. 데이터 증가 시 재점검.
         const { data: invoices, error: invErr } = await db
             .from('invoices').select('id').eq('hotel_id', hotelId);
 
