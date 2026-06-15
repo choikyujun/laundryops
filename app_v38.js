@@ -6915,35 +6915,87 @@ window.viewInvoiceDetail = async function(id) {
     let prevDayRev = 0, yearRev = 0, prevYearRev = 0;
     const hotelSales = {};
 
-    // 1. 단가제 매출 (invoices)
-    const { data: invData } = await window.mySupabase.from('invoices')
-        .select('date, total_amount, hotel_id, staff_name, hotels(name, contract_type)')
-        .eq('factory_id', currentFactoryId);
+    // 1. 단가제 매출 — 카드별 날짜-범위 쿼리 (Supabase 서버 1000-row 캡 우회)
+    const invSel = 'date, total_amount, hotel_id, staff_name, hotels(name, contract_type)';
+    const fId = currentFactoryId;
 
-    if(invData) {
-        invData.forEach(inv => {
-            // [수정] 대시보드 통계 계산 시 차감 명세서는 완전히 제외하여 매출 합계를 왜곡하지 않게 함
-            if (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) return;
-            if (inv.hotels && inv.hotels.contract_type === 'fixed') return;
-            const hName = inv.hotels ? inv.hotels.name : '알수없음';
-            const supplyPrice = inv.total_amount;
-            if(inv.date === todayStr) todayRev += supplyPrice;
-            if(inv.date === prevDayStr) prevDayRev += supplyPrice;
-            if(inv.date.startsWith(curMonth) && inv.date <= todayStr) {
-                monthRev += supplyPrice;
-                hotelSales[hName] = (hotelSales[hName] || 0) + supplyPrice;
-            }
-            if(inv.date >= prevMonthStart && inv.date <= prevMonthEnd) prevMonthRev += supplyPrice;
-            if(inv.date >= curYearStart && inv.date <= todayStr) yearRev += supplyPrice;
-            if(inv.date >= prevYearStart && inv.date <= prevYearEndStr) prevYearRev += supplyPrice;
+    // 이번달 범위: 과거월 선택 시 월말 캡, 현재월이면 오늘까지
+    const curMonthStart = curMonth + '-01';
+    const curMonthLastDate = curMonth + '-' + String(daysIn(parseInt(parts[0]), parseInt(parts[1]))).padStart(2, '0');
+    const curMonthEnd = curMonthLastDate < todayStr ? curMonthLastDate : todayStr;
+
+    // 올해 YTD 월별 쿼리 (1월~오늘 달, 각 월 독립 — 1000-row 캡 원천 차단)
+    const curYearMonthPromises = [];
+    for (let m = 1; m <= todayMonthNum; m++) {
+        const mPfx = curYear + '-' + String(m).padStart(2, '0');
+        const mEnd = m < todayMonthNum
+            ? mPfx + '-' + String(daysIn(parseInt(curYear), m)).padStart(2, '0')
+            : todayStr;
+        curYearMonthPromises.push(
+            window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId)
+                .gte('date', mPfx + '-01').lte('date', mEnd)
+        );
+    }
+
+    // 전년 YTD 월별 쿼리 (1월~오늘 달, 마지막 달은 prevYearEndStr 윤년 캡)
+    const prevYearMonthPromises = [];
+    for (let m = 1; m <= todayMonthNum; m++) {
+        const mPfx = prevYear + '-' + String(m).padStart(2, '0');
+        const mEnd = m < todayMonthNum
+            ? mPfx + '-' + String(daysIn(prevYearNum, m)).padStart(2, '0')
+            : prevYearEndStr;
+        prevYearMonthPromises.push(
+            window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId)
+                .gte('date', mPfx + '-01').lte('date', mEnd)
+        );
+    }
+
+    // 전체 병렬 실행 (오늘·전월같은날·이번달·전월·호텔목록·올해월별·전년월별)
+    const allResults = await Promise.all([
+        window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId).eq('date', todayStr),
+        window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId).eq('date', prevDayStr),
+        window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId).gte('date', curMonthStart).lte('date', curMonthEnd),
+        window.mySupabase.from('invoices').select(invSel).eq('factory_id', fId).gte('date', prevMonthStart).lte('date', prevMonthEnd),
+        window.mySupabase.from('hotels').select('name, contract_type, fixed_amount, created_at').eq('factory_id', fId),
+        ...curYearMonthPromises,
+        ...prevYearMonthPromises,
+    ]);
+
+    const nYearMonths       = curYearMonthPromises.length; // = todayMonthNum
+    const todayData         = allResults[0].data;
+    const prevDayData       = allResults[1].data;
+    const curMonthData      = allResults[2].data;
+    const prevMonthData     = allResults[3].data;
+    const hotelData         = allResults[4].data;
+    const curYearMonthData  = allResults.slice(5, 5 + nYearMonths).map(r => r.data);
+    const prevYearMonthData = allResults.slice(5 + nYearMonths).map(r => r.data);
+
+    // 차감 명세서·정액제 거래처 제외 필터 (기존 로직 동일)
+    function filterInv(rows) {
+        return (rows || []).filter(inv => {
+            if (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) return false;
+            if (inv.hotels && inv.hotels.contract_type === 'fixed') return false;
+            return true;
         });
     }
 
-    // 2. 정액제 매출 합산
-    const { data: hotelData } = await window.mySupabase.from('hotels')
-        .select('name, contract_type, fixed_amount, created_at')
-        .eq('factory_id', currentFactoryId);
+    // 카드1: 오늘 / 전월 같은날
+    filterInv(todayData).forEach(inv => { todayRev += inv.total_amount; });
+    filterInv(prevDayData).forEach(inv => { prevDayRev += inv.total_amount; });
 
+    // 카드2: 이번달 단가제 (TOP 랭킹 hotelSales 동시 집계) + 전월
+    filterInv(curMonthData).forEach(inv => {
+        monthRev += inv.total_amount;
+        const hName = inv.hotels ? inv.hotels.name : '알수없음';
+        hotelSales[hName] = (hotelSales[hName] || 0) + inv.total_amount;
+    });
+    filterInv(prevMonthData).forEach(inv => { prevMonthRev += inv.total_amount; });
+
+    // 카드3: 올해/전년 YTD 단가제 (월별 독립 집계)
+    curYearMonthData.forEach(rows => filterInv(rows).forEach(inv => { yearRev += inv.total_amount; }));
+    prevYearMonthData.forEach(rows => filterInv(rows).forEach(inv => { prevYearRev += inv.total_amount; }));
+
+    // 2. 정액제 매출 합산
     let activeHotels = 0;
     if(hotelData) {
         hotelData.forEach(h => {
