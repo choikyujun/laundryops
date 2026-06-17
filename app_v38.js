@@ -689,23 +689,30 @@ window.deleteSentInvoice = async function(sentAt) {
 };
 
 // --- Admin Credentials & Global Notice Logic (SQL-First) ---
+window.callAccountAdmin = async function(payload) {
+    const { data, error } = await window.mySupabase.functions.invoke('account-admin', { body: payload });
+    if (error) {
+        let msg = error.message || '요청 실패';
+        try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch(e) {}
+        return { error: { message: msg }, data: null };
+    }
+    if (data && data.error) return { error: { message: data.error }, data: null };
+    return { error: null, data: data };
+};
+
 window.saveAdminCredentials = async function() {
     const id = document.getElementById('sa_id').value.trim();
     const pw = document.getElementById('sa_pw').value.trim();
     const phoneEl = document.getElementById('sa_phone');
     const phone = phoneEl ? phoneEl.value.trim() : '';
 
-    if(!id || !pw) { alert('ID와 비밀번호를 모두 입력하세요.'); return; }
+    if(!id) { alert('ID를 입력하세요.'); return; }
     
     // 기존 데이터 보존
     const { data: currentSettings } = await window.mySupabase.from('platform_settings').select('*').eq('id', 'master_config').maybeSingle();
     const payload = currentSettings || { id: 'master_config' };
     
-    payload.admin_id = id;
-    payload.admin_pw = pw;
-    payload.admin_phone = phone;
-
-    const { error } = await window.mySupabase.from('platform_settings').upsert(payload);
+    const { error } = await window.callAccountAdmin({ action: 'update_superadmin', new_admin_id: id, admin_phone: phone, ...(pw ? { new_password: pw } : {}) });
         
     if (error) { 
         alert('계정 저장 중 오류가 발생했습니다: ' + error.message + '\n(혹시 admin_phone 컬럼이 없다면 Supabase에서 추가해주세요.)'); 
@@ -727,10 +734,6 @@ window.saveNotice = async function() {
         global_notice: noticeContent
     };
     
-    if (currentSettings) {
-        updateData.admin_id = currentSettings.admin_id;
-        updateData.admin_pw = currentSettings.admin_pw;
-    }
     
     const { error } = await window.mySupabase.from('platform_settings').upsert(updateData);
     
@@ -744,8 +747,8 @@ window.loadGlobalNotice = async function() {
     const bar = document.getElementById('globalNoticeBar');
     const input = document.getElementById('globalNoticeInput');
     
-    const { data: settings } = await window.mySupabase.from('platform_settings').select('global_notice').eq('id', 'master_config').maybeSingle();
-    const notice = settings && settings.global_notice ? settings.global_notice : '';
+    const { data: notice0 } = await window.mySupabase.rpc('get_global_notice');
+    const notice = notice0 || '';
     
     if (input) input.value = notice;
     
@@ -852,40 +855,11 @@ window.findAndResetPassword = async function() {
         return;
     }
 
-    // 1. 공장 테이블에서 아이디로 먼저 조회 (전화번호 형식 하이픈 무시를 위함)
-    const { data: factory, error } = await window.mySupabase
-        .from('factories')
-        .select('id, admin_id, phone, name')
-        .eq('admin_id', lId)
-        .maybeSingle();
-
-    if (error || !factory) {
-        alert('입력하신 아이디와 일치하는 계정을 찾을 수 없습니다.');
-        return;
-    }
-
-    // 휴대폰 번호 하이픈 제거 후 비교
-    const dbPhone = (factory.phone || '').replace(/-/g, '').trim();
     const inputPhone = phone.replace(/-/g, '').trim();
-
-    if (dbPhone !== inputPhone) {
-        alert('입력하신 아이디와 휴대폰 번호 정보가 일치하지 않습니다.');
-        return;
-    }
-
-    // 2. 임시 비밀번호 생성 (6자리 숫자)
-    const tempPw = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // 3. DB 비밀번호 업데이트
-    const { error: updateErr } = await window.mySupabase
-        .from('factories')
-        .update({ admin_pw: tempPw })
-        .eq('id', factory.id);
-
-    if (updateErr) {
-        alert('비밀번호 초기화 중 오류가 발생했습니다: ' + updateErr.message);
-        return;
-    }
+    const r = await window.callAccountAdmin({ action: 'forgot_password', admin_id: lId, phone: phone });
+    if (r.error) { alert(r.error.message); return; }
+    const tempPw = r.data.tempPw;
+    const factory = { name: r.data.name, phone: r.data.phone };
 
     // 4. 알리고 SMS 발송 (Supabase Edge Function 경유)
     try {
@@ -1002,11 +976,8 @@ window.submitRegistration = async function() {
 
     // 관리자에게 가입 신청 SMS 발송
     try {
-        const { data: mConfig } = await window.mySupabase
-            .from('platform_settings')
-            .select('admin_phone')
-            .eq('id', 'master_config')
-            .maybeSingle();
+        const { data: _adminPhone } = await window.mySupabase.rpc('get_admin_phone');
+        const mConfig = _adminPhone ? { admin_phone: _adminPhone } : null;
         if (mConfig && mConfig.admin_phone) {
             await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
                 method: 'POST',
@@ -1849,7 +1820,7 @@ window.loadAdminStaffList = async function() {
         staffList.forEach(s => {
             tbody.innerHTML += `<tr>
                 <td><strong>${s.name}</strong></td>
-                <td style="font-size:13px;">${s.login_id}<br><small style="color:var(--secondary)">PW: ${s.login_pw}</small></td>
+                <td style="font-size:13px;">${s.login_id}<br><small style="color:var(--secondary)">PW: ****</small></td>
                 <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteStaff('${s.id}')">삭제</button></td>
             </tr>`;
         });
@@ -1934,7 +1905,7 @@ window.changeStaffPage = function(delta) {
 window.deleteStaff = async function(sId) {
     if(!confirm('삭제?')) return;
     // [v38 SQL-First] DB에서 직접 삭제
-    const { error } = await window.mySupabase.from('staff').delete().eq('id', sId);
+    const { error } = await window.callAccountAdmin({ action: 'delete_staff', staff_id: sId });
     if(error) { alert('직원 삭제 실패: ' + error.message); return; }
     if(typeof window.loadAdminStaffList === 'function') window.loadAdminStaffList();
 };
@@ -1978,13 +1949,7 @@ window.saveNewStaff = async function() {
         return;
     }
 
-    const { error } = await window.mySupabase.from('staff').insert([{
-        id: 'st_' + Date.now(),
-        factory_id: currentFactoryId,
-        name: name,
-        login_id: lId,
-        login_pw: lPw
-    }]);
+    const { error } = await window.callAccountAdmin({ action: 'create_staff', name: name, login_id: lId, password: lPw });
 
     if (error) {
         alert('등록 실패: ' + error.message);
@@ -2075,38 +2040,11 @@ window.approveFactory = async function(reqId) {
     const { data: p, error: pErr } = await window.mySupabase.from('pending_factories').select('*').eq('id', reqId).maybeSingle();
     if (pErr || !p) { alert('신청 데이터를 찾을 수 없습니다.'); return; }
     
-    // Supabase DB에 직접 삽입 전 중복 ID 체크
-    const { data: existing, error: checkErr } = await window.mySupabase.from('factories').select('id').eq('admin_id', p.admin_id).maybeSingle();
-    if (checkErr) { alert('중복 체크 중 오류 발생: ' + checkErr.message); return; }
-    if (existing) { alert('이미 같은 관리자 ID(' + p.admin_id + ')를 사용하는 공장이 있습니다.'); return; }
-
-    const fId = 'f_' + Date.now();
-    const expiryDate = new Date(p.date || new Date());
-    expiryDate.setMonth(expiryDate.getMonth() + 5);
-    const planExpiry = expiryDate.toISOString().split('T')[0];
-
-    const { error } = await window.mySupabase.from('factories').insert([{
-        id: fId,
-        name: p.name,
-        admin_id: p.admin_id,
-        admin_pw: p.admin_pw,
-        ceo: p.name + ' 대표',
-        phone: p.phone,
-        address: p.address,
-        status: 'operating',
-        created_at: p.date || getTodayString(),
-        sub_status: 'trial', 
-        plan: '무료요금제',
-        plan_expiry: planExpiry
-    }]);
-
+    const { error } = await window.callAccountAdmin({ action: 'approve_factory', pending_id: reqId });
     if (error) {
         alert('승인 중 오류 발생: ' + error.message);
         return;
     }
-
-    // pending_factories에서 삭제
-    await window.mySupabase.from('pending_factories').delete().eq('id', reqId);
 
     // 가입 승인 카카오 알림톡 → 공장 대표에게 발송
     try {
@@ -2143,7 +2081,7 @@ window.updateFactoryStatus = async function(fId, s) {
 };
 window.deleteFactory = async function(fId) {
     if(confirm('정말 이 세탁공장을 삭제하시겠습니까? 관련된 모든 데이터(거래처, 명세서)가 연쇄적으로 영구 삭제됩니다!')) {
-        const { error } = await window.mySupabase.from('factories').delete().eq('id', fId);
+        const { error } = await window.callAccountAdmin({ action: 'delete_factory', factory_id: fId });
         if (error) { alert('삭제 중 오류가 발생했습니다: ' + error.message); return; }
         
         window.loadSuperAdminDashboard();
@@ -2164,7 +2102,7 @@ window.viewFactoryDetails = async function(fId, isSuperAdmin = false) {
     if(error || !f) { alert('데이터를 불러올 수 없습니다.'); return; }
     document.getElementById('s_factoryName').value = f.name;
     document.getElementById('s_adminId').value = f.admin_id;
-    document.getElementById('s_adminPw').value = f.admin_pw;
+    document.getElementById('s_adminPw').value = ''; document.getElementById('s_adminPw').placeholder = '변경 시에만 입력';
     document.getElementById('s_ceo').value = f.ceo || '';
     document.getElementById('s_phone').value = f.phone || '';
     document.getElementById('s_address').value = f.address || '';
@@ -2196,7 +2134,8 @@ window.openFactoryModal = function(isSuperAdmin = false) {
 };
 
 window.saveNewFactory = async function() {
-  const fields = [{ id: 's_factoryName', err: 'err_s_factoryName' }, { id: 's_adminId', err: 'err_s_adminId' }, { id: 's_adminPw', err: 'err_s_adminPw' }];
+  const fields = [{ id: 's_factoryName', err: 'err_s_factoryName' }, { id: 's_adminId', err: 'err_s_adminId' }];
+  if (!editingFactoryId) fields.push({ id: 's_adminPw', err: 'err_s_adminPw' });
   let isValid = true;
   fields.forEach(f => {
       const el = document.getElementById(f.id);
@@ -2259,16 +2198,18 @@ window.saveNewFactory = async function() {
       }
   }
 
+  const _adminId = factoryData.admin_id;
+  const _pw = factoryData.admin_pw;
+  delete factoryData.admin_id;
+  delete factoryData.admin_pw;
+
   let error;
   if (editingFactoryId) {
-      const { error: err } = await window.mySupabase.from('factories').update(factoryData).eq('id', editingFactoryId);
-      error = err;
+      const r = await window.callAccountAdmin({ action: 'update_factory', factory_id: editingFactoryId, fields: factoryData, new_admin_id: _adminId, ...(_pw ? { new_password: _pw } : {}) });
+      error = r.error;
   } else {
-      factoryData.id = 'f_' + Date.now();
-      factoryData.status = 'operating';
-      factoryData.created_at = new Date().toISOString();
-      const { error: err } = await window.mySupabase.from('factories').insert(factoryData);
-      error = err;
+      const r = await window.callAccountAdmin({ action: 'create_factory', admin_id: _adminId, password: _pw, fields: factoryData });
+      error = r.error;
   }
 
   if (error) { alert('저장 실패: ' + error.message); return; }
@@ -2545,11 +2486,8 @@ window.submitPaymentRequest = async function() {
     try {
         const { data: fInfo } = await window.mySupabase.from('factories').select('name').eq('id', currentFactoryId).maybeSingle();
         const factoryName = fInfo ? fInfo.name : '';
-        const { data: mConfig } = await window.mySupabase
-            .from('platform_settings')
-            .select('admin_phone')
-            .eq('id', 'master_config')
-            .maybeSingle();
+        const { data: _adminPhone } = await window.mySupabase.rpc('get_admin_phone');
+        const mConfig = _adminPhone ? { admin_phone: _adminPhone } : null;
         if (mConfig && mConfig.admin_phone) {
             await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
                 method: 'POST',
@@ -6073,7 +6011,7 @@ window.openHotelModal = async function(hId = null) {
             document.getElementById('h_contractType').value = h.contract_type;
             document.getElementById('h_fixedAmount').value = h.fixed_amount || '0';
             document.getElementById('h_loginId').value = h.login_id || '';
-            document.getElementById('h_loginPw').value = h.login_pw || '';
+            document.getElementById('h_loginPw').value = ''; document.getElementById('h_loginPw').placeholder = '변경 시에만 입력';
             if(h.hotel_type) {
                 const rb = document.querySelector(`input[name="h_type"][value="${h.hotel_type}"]`);
                 if(rb) rb.checked = true;
@@ -6216,12 +6154,17 @@ window.saveNewHotel = async function() {
     // OFF 시에는 outbound_start_date 건드리지 않음 (이력 보존)
 
     if(window.editingHotelIdForInfo) {
-        delete payload.hotel_type; // 수정 시 유형 변경 원천 차단
-        await window.mySupabase.from('hotels').update(payload).eq('id', window.editingHotelIdForInfo);
+        const _loginId = payload.login_id; const _pw = payload.login_pw;
+        const _fields = Object.assign({}, payload); delete _fields.factory_id; delete _fields.login_id; delete _fields.login_pw; delete _fields.hotel_type;
+        const r = await window.callAccountAdmin({ action: 'update_hotel', hotel_id: window.editingHotelIdForInfo, fields: _fields, new_login_id: _loginId, ...(_pw ? { new_password: _pw } : {}) });
+        if (r.error) { alert('수정 실패: ' + r.error.message); return; }
         alert('거래처 정보가 수정되었습니다.');
     } else {
-        payload.id = 'h_' + Date.now();
-        const { data: insertedHotel } = await window.mySupabase.from('hotels').insert([payload]).select().single();
+        const _loginId2 = payload.login_id; const _pw2 = payload.login_pw;
+        const _fields2 = Object.assign({}, payload); delete _fields2.factory_id; delete _fields2.login_id; delete _fields2.login_pw;
+        const r2 = await window.callAccountAdmin({ action: 'create_hotel', login_id: _loginId2, password: _pw2, fields: _fields2 });
+        if (r2.error) { alert('등록 실패: ' + r2.error.message); return; }
+        const insertedHotel = { id: r2.data.hotel_id };
         
         // [신규 등록 후 기본 단가 자동 적용]
         console.log("DEBUG: tempDefaultItems:", window.tempDefaultItems);
@@ -6263,7 +6206,8 @@ window.saveNewHotel = async function() {
 
 window.deleteHotel = async function(hId) {
     if(confirm('정말 이 거래처를 삭제하시겠습니까? 관련된 명세서도 표시되지 않을 수 있습니다.')) {
-        await window.mySupabase.from('hotels').delete().eq('id', hId);
+        const r = await window.callAccountAdmin({ action: 'delete_hotel', hotel_id: hId });
+        if (r.error) { alert('삭제 실패: ' + r.error.message); return; }
         window.loadAdminHotelList();
     }
 };
