@@ -125,7 +125,8 @@ window.initApp = async function() {
 }
 window.addEventListener('DOMContentLoaded', window.initApp);
 
-window.logout = function() {
+window.logout = async function() {
+    try { await window.mySupabase.auth.signOut(); } catch (e) {}
     localStorage.removeItem('currentFactoryId');
     localStorage.removeItem('adminAccessFactoryId');
     location.reload();
@@ -2980,106 +2981,102 @@ window._realLogin = window.login = async function() {
     if (!lId) { window.showLoginError('ID를 입력해주세요.', 'id'); return; }
     if (!password) { window.showLoginError('비밀번호를 입력해주세요.', 'pw'); return; }
 
-    // 슈퍼어드민 계정 확인 (SQL-First DB 연동)
-    if (role === 'superadmin') {
-        const { data: settings } = await window.mySupabase.from('platform_settings').select('*').eq('id', 'master_config').maybeSingle();
-        
-        let superAdminId = 'admin'; // 기본값 (테이블이 비어있을 경우 대비)
-        let superAdminPw = '1111';  // 기본값
-        
-        if (settings && settings.admin_id) {
-            superAdminId = settings.admin_id;
-            superAdminPw = settings.admin_pw;
-        }
-        
-        if (lId === superAdminId && password === superAdminPw) {
-            _applySaveId(role, lId);
-            showView('superAdminView', '플랫폼 총괄 관리자');
-            window.loadSuperAdminDashboard();
-            if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
-            return;
-        } else {
-            window.showLoginError('슈퍼관리자 ID 또는 비밀번호가 일치하지 않습니다.', 'idpw');
-            return;
-        }
+    // ===== 탭(role) → 합성 이메일 도메인 =====
+    const ROLE_DOMAIN = {
+        superadmin: 'admin.laundryops.app',
+        admin:      'factory.laundryops.app',
+        staff:      'staff.laundryops.app',
+        hotel:      'hotel.laundryops.app'
+    };
+    // app_metadata.role 은 공장 탭이 'admin' 이 아니라 'factory' 임에 주의
+    const EXPECTED_ROLE = { superadmin: 'superadmin', admin: 'factory', staff: 'staff', hotel: 'hotel' };
+    const looksLikeEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+    const toEmail = (id, r) => looksLikeEmail(id) ? id : (id + '@' + ROLE_DOMAIN[r]);
+
+    // ===== Supabase Auth 로그인 (모든 역할 공통) =====
+    const loginEmail = toEmail(lId, role);
+    const { data: authData, error: authErr } =
+        await window.mySupabase.auth.signInWithPassword({ email: loginEmail, password });
+
+    const dbg = document.getElementById('loginDebugArea');
+    if (dbg) dbg.style.display = 'none';
+
+    if (authErr || !authData || !authData.user) {
+        window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw');
+        return;
     }
 
-    document.getElementById('loginDebugArea').style.display = 'block';
-    document.getElementById('loginDebugArea').innerText = 'DB 확인 중...';
+    const meta = authData.user.app_metadata || {};
 
-    // 1. 세탁공장 대표 로그인 (factories 테이블 검색)
+    // 탭과 실제 계정 유형이 다르면 차단 (예: 공장 계정으로 호텔 탭 로그인)
+    if (meta.role && meta.role !== EXPECTED_ROLE[role]) {
+        await window.mySupabase.auth.signOut();
+        window.showLoginError('이 로그인 유형의 계정이 아닙니다. 탭을 확인하세요.', 'idpw');
+        return;
+    }
+
+    // ===== 0. 슈퍼관리자 =====
+    if (role === 'superadmin') {
+        _applySaveId(role, lId);
+        showView('superAdminView', '플랫폼 총괄 관리자');
+        window.loadSuperAdminDashboard();
+        if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
+        return;
+    }
+
+    // ===== 1. 세탁공장 대표 =====
     if (role === 'admin') {
-        const { data, error } = await window.mySupabase.from('factories').select('*').eq('admin_id', lId).maybeSingle();
-        document.getElementById('loginDebugArea').style.display = 'none';
-
-        if (error || !data || data.admin_pw !== password) { window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw'); return; }
-        if (data.status === 'pending') { window.showLoginError('가입 승인 대기 중입니다. 플랫폼 관리자의 승인을 기다려주세요.', null); return; }
-        if (data.status === 'suspended') { window.showLoginError('미운영 상태입니다. 관리자에게 문의하세요.', null); return; }
+        const { data, error } = await window.mySupabase
+            .from('factories').select('*').eq('id', meta.factory_id).maybeSingle();
+        if (error || !data) { await window.mySupabase.auth.signOut(); window.showLoginError('공장 정보를 불러오지 못했습니다.', null); return; }
+        if (data.status === 'pending')   { await window.mySupabase.auth.signOut(); window.showLoginError('가입 승인 대기 중입니다. 플랫폼 관리자의 승인을 기다려주세요.', null); return; }
+        if (data.status === 'suspended') { await window.mySupabase.auth.signOut(); window.showLoginError('미운영 상태입니다. 관리자에게 문의하세요.', null); return; }
 
         _applySaveId(role, lId);
         currentFactoryId = data.id;
         localStorage.setItem('currentFactoryId', data.id);
 
         if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
-        
+
         // [만료일 체크 및 구독 상태 자동 업데이트]
         if (data.plan_expiry) {
             const expiry = new Date(data.plan_expiry);
-            expiry.setHours(23, 59, 59, 999); // 만료일 당일까지는 만료되지 않은 것으로 처리
+            expiry.setHours(23, 59, 59, 999);
             const today = new Date();
-            
             let newSubStatus = data.sub_status;
-            
             if (expiry < today) {
                 newSubStatus = 'expired';
-            } else if (expiry - today < 15 * 24 * 60 * 60 * 1000) { // 15일 이내
+            } else if (expiry - today < 15 * 24 * 60 * 60 * 1000) {
                 newSubStatus = 'expiring';
             } else {
-                // 15일 이상 넉넉하게 남았을 때
-                // 만약 현재 상태가 '무료체험(trial)'이라면 'active'로 덮어쓰지 않고 유지합니다.
-                if (data.sub_status !== 'trial') {
-                    newSubStatus = 'active';
-                }
+                if (data.sub_status !== 'trial') { newSubStatus = 'active'; }
             }
-            
-            // DB 업데이트 수행
             if (newSubStatus !== data.sub_status) {
                 await window.mySupabase.from('factories').update({ sub_status: newSubStatus }).eq('id', data.id);
-                data.sub_status = newSubStatus; // 현재 객체 상태도 업데이트
+                data.sub_status = newSubStatus;
                 console.log(`[로그인 시점 업데이트] 구독상태가 ${newSubStatus} 로 변경되었습니다.`);
             }
-            
-            // 결제 유도 팝업 띄우기 (만료됨 또는 만료 임박)
             if (data.sub_status === 'expired' || data.sub_status === 'expiring') {
                 if (data.sub_status !== 'trial') {
                     const msg = data.sub_status === 'expired' ? "요금제 기간이 만료되었습니다. 결제 후 계속 이용해 주세요." : "요금제 만료가 임박했습니다. 미리 결제해 주세요.";
                     document.getElementById('paymentMsg').innerText = msg;
                     openModal('paymentModal');
-                    window.loadAdminPayment(); // 요금제 정보 로드
+                    window.loadAdminPayment();
                 }
             }
         }
-        
-        // 기존 호환성용 껍데기 세팅
+
         if (!platformData.factories[data.id]) platformData.factories[data.id] = { hotels: {}, staffAccounts: {}, history: [] };
-        
         showView('adminView', data.name + ' - 대표');
         window.loadAdminDashboard();
         return;
     }
-    
-    // 2. 현장 직원 로그인 (staff 테이블 검색)
+
+    // ===== 2. 현장 직원 =====
     if (role === 'staff') {
-        // staff 테이블과 연결된 factories 테이블의 이름까지 조인해서 한 번에 가져옴!
         const { data, error } = await window.mySupabase
-            .from('staff')
-            .select('*, factories(name)')
-            .eq('login_id', lId)
-            .maybeSingle();
-
-        document.getElementById('loginDebugArea').style.display = 'none';
-
-        if (error || !data || data.login_pw !== password) { window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw'); return; }
+            .from('staff').select('*, factories(name)').eq('id', meta.staff_id).maybeSingle();
+        if (error || !data) { await window.mySupabase.auth.signOut(); window.showLoginError('직원 정보를 불러오지 못했습니다.', null); return; }
 
         _applySaveId(role, lId);
         currentFactoryId = data.factory_id;
@@ -3087,26 +3084,17 @@ window._realLogin = window.login = async function() {
         localStorage.setItem('currentFactoryId', data.factory_id);
 
         if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
-
         showView('staffView', (data.factories ? data.factories.name : '세탁공장') + ' - 현장직원 (' + currentStaffName + ')');
-        
-        // v34 전용 함수 (나중에 구현)
-        if(typeof window.loadStaffHotelSelect === 'function') window.loadStaffHotelSelect();
-        if(typeof window.loadStaffInvoiceList === 'function') window.loadStaffInvoiceList();
+        if (typeof window.loadStaffHotelSelect === 'function') window.loadStaffHotelSelect();
+        if (typeof window.loadStaffInvoiceList === 'function') window.loadStaffInvoiceList();
         return;
     }
 
-    // 3. 거래처 파트너 로그인 (hotels 테이블 검색)
+    // ===== 3. 거래처(호텔) 파트너 =====
     if (role === 'hotel') {
         const { data, error } = await window.mySupabase
-            .from('hotels')
-            .select('*, factories(name, phone, ceo)')
-            .eq('login_id', lId)
-            .maybeSingle();
-
-        document.getElementById('loginDebugArea').style.display = 'none';
-
-        if (error || !data || data.login_pw !== password) { window.showLoginError('ID 또는 비밀번호가 일치하지 않습니다.', 'idpw'); return; }
+            .from('hotels').select('*, factories(name, phone, ceo)').eq('id', meta.hotel_id).maybeSingle();
+        if (error || !data) { await window.mySupabase.auth.signOut(); window.showLoginError('거래처 정보를 불러오지 못했습니다.', null); return; }
 
         _applySaveId(role, lId);
         currentFactoryId = data.factory_id;
@@ -3115,8 +3103,6 @@ window._realLogin = window.login = async function() {
         localStorage.setItem('currentHotelId', data.id);
 
         if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
-
-        // 호환성 껍데기
         if (!platformData.factories[data.factory_id]) platformData.factories[data.factory_id] = { hotels: {}, staffAccounts: {}, history: [] };
         if (!platformData.factories[data.factory_id].hotels[data.id]) platformData.factories[data.factory_id].hotels[data.id] = { name: data.name };
 
