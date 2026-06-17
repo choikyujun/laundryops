@@ -367,7 +367,6 @@ window.restoreFactoryData = function(input) {
             const updatePayload = {
                 name: restoredData.name,
                 admin_id: restoredData.adminId,
-                admin_pw: restoredData.adminPw || restoredData.admin_pw,
                 ceo: restoredData.ceo,
                 phone: restoredData.phone,
                 address: restoredData.address,
