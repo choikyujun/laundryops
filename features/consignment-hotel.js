@@ -423,6 +423,49 @@
         }
         const elTotal = document.getElementById('hotelMonthlyTotal');
         if (elTotal) elTotal.innerText = total.toLocaleString() + '원';
+
+        // B3: 6개월 추이 재산출 (display_price 기준)
+        const trendMonths = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(sMonth + '-01');
+            d.setMonth(d.getMonth() - i);
+            trendMonths.push(d.toISOString().substring(0, 7));
+        }
+        const newTrend = {};
+        trendMonths.forEach(m => { newTrend[m] = 0; });
+
+        for (const tm of trendMonths) {
+            const [tmY, tmM] = tm.split('-').map(Number);
+            const tmLastDay = new Date(tmY, tmM, 0).getDate();
+            const tmStart = tm + '-01';
+            const tmEnd = tm + '-' + String(tmLastDay).padStart(2, '0');
+
+            const { data: tmInvs } = await window.mySupabase
+                .from('invoices')
+                .select('id, staff_name')
+                .eq('hotel_id', currentHotelId)
+                .gte('date', tmStart)
+                .lte('date', tmEnd);
+
+            const tmIds = (tmInvs || [])
+                .filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)')))
+                .map(inv => inv.id);
+
+            if (tmIds.length === 0) continue;
+
+            const { data: tmItems } = await window.mySupabase
+                .from('invoice_items')
+                .select('name, qty, price')
+                .in('invoice_id', tmIds);
+
+            let tmTotal = 0;
+            (tmItems || []).forEach(it => {
+                const dp = dpMap[it.name] != null ? dpMap[it.name] : Number(it.price || 0);
+                tmTotal += dp * Number(it.qty || 0);
+            });
+            newTrend[tm] = Math.round(tmTotal);
+        }
+        window.updateHotelTrendChart(newTrend);
     };
 
     // ── viewInvoiceDetail: B6 위탁+파트너뷰일 때 display_price 환산 ─────
@@ -557,6 +600,775 @@
 
         document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
         openModal('invoiceDetailModal');
+    };
+
+    // ── B4 save: confirmSendInvoice — display_total_amount 박제 (위탁만) ──
+    const _origConfirmSendInvoice = window.confirmSendInvoice;
+    window.confirmSendInvoice = async function (sDate, eDate, hotelId, totalAmount, supplyPrice, vat) {
+        const { data: hCheck } = await window.mySupabase
+            .from('hotels').select('is_consignment, contract_type, hotel_type').eq('id', hotelId).single();
+        if (!hCheck || !hCheck.is_consignment) {
+            return _origConfirmSendInvoice.apply(this, arguments);
+        }
+
+        const isSpecial = hCheck.contract_type === 'special' || hCheck.hotel_type === 'special';
+        const typeFilter = isSpecial ? 'special' : 'general';
+        const dpMap = await _getDisplayPriceMap(hotelId, typeFilter);
+
+        const { data: invData } = await window.mySupabase
+            .from('invoices')
+            .select('invoice_items(name, qty, price)')
+            .eq('factory_id', currentFactoryId)
+            .eq('hotel_id', hotelId)
+            .gte('date', sDate)
+            .lte('date', eDate);
+
+        let displaySupply = 0;
+        (invData || []).forEach(inv => {
+            (inv.invoice_items || []).forEach(it => {
+                const dp = dpMap[it.name] != null ? dpMap[it.name] : Number(it.price || 0);
+                displaySupply += dp * Number(it.qty || 0);
+            });
+        });
+        const displayVat = Math.floor(Math.round(displaySupply) * 0.1);
+        const displayTotal = Math.round(displaySupply) + displayVat;
+
+        const sentAtVal = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const { error: sentErr } = await window.mySupabase.from('sent_logs').insert([{
+            factory_id: currentFactoryId,
+            hotel_id: hotelId,
+            period: sDate + ' ~ ' + eDate,
+            total_amount: totalAmount,
+            supply_price: supplyPrice,
+            vat: vat,
+            sent_at: sentAtVal,
+            is_confirmed: false,
+            display_total_amount: displayTotal
+        }]);
+        if (sentErr) { alert('발송 저장 실패: ' + sentErr.message); return; }
+
+        await window.mySupabase.from('invoices')
+            .update({ is_sent: true, report_period: sDate + ' ~ ' + eDate })
+            .eq('factory_id', currentFactoryId)
+            .eq('hotel_id', hotelId)
+            .gte('date', sDate)
+            .lte('date', eDate);
+
+        {
+            alert('성공적으로 발송되었습니다.');
+            closeModal('sendInvoiceModal');
+            loadAdminDashboard();
+            window.loadAdminSentList();
+        }
+
+        try {
+            const { data: hInfo } = await window.mySupabase
+                .from('hotels').select('name, phone').eq('id', hotelId).maybeSingle();
+            if (hInfo && hInfo.phone) {
+                const { data: fInfo } = await window.mySupabase
+                    .from('factories').select('name').eq('id', currentFactoryId).maybeSingle();
+                await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-kakao', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'billing',
+                        to: hInfo.phone.replace(/-/g, ''),
+                        factoryName: fInfo ? fInfo.name : '',
+                        hotelName: hInfo.name,
+                        startDate: sDate,
+                        endDate: eDate
+                    })
+                });
+            }
+        } catch (e) { console.warn('[월정산 알림톡 발송 실패]', e); }
+    };
+
+    // ── B4 display: 수신함 목록 + 페이징 (display_total_amount 표시) ────
+    let _cphReceivedData = null;
+    let _cphReceivedPage = 1;
+    const _CPH_PAGE_SIZE = 10;
+
+    window.loadHotelReceivedInvoicesList = async function () {
+        const tbody = document.getElementById('hotelReceivedInvoicesList');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">불러오는 중...</td></tr>';
+
+        const { data: logs, error } = await window.mySupabase
+            .from('sent_logs')
+            .select('id, period, total_amount, display_total_amount, sent_at, is_confirmed')
+            .eq('hotel_id', currentHotelId)
+            .order('sent_at', { ascending: false });
+
+        if (error || !logs) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--danger);">오류: ${error?.message || '알 수 없는 오류'}</td></tr>`;
+            window.renderHotelReceivedPaging(0);
+            return;
+        }
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:gray;">수신된 정산 리포트가 없습니다.</td></tr>';
+            window.renderHotelReceivedPaging(0);
+            return;
+        }
+
+        _cphReceivedData = logs;
+        _cphReceivedPage = 1;
+        window.renderHotelReceivedPage();
+    };
+
+    window.renderHotelReceivedPage = function () {
+        const tbody = document.getElementById('hotelReceivedInvoicesList');
+        if (!tbody || !_cphReceivedData) return;
+
+        const total = _cphReceivedData.length;
+        const totalPages = Math.ceil(total / _CPH_PAGE_SIZE);
+        const start = (_cphReceivedPage - 1) * _CPH_PAGE_SIZE;
+        const pageData = _cphReceivedData.slice(start, start + _CPH_PAGE_SIZE);
+
+        tbody.innerHTML = '';
+        pageData.forEach(log => {
+            const displayPeriod = log.period || '-';
+            const amt = log.display_total_amount != null ? log.display_total_amount : log.total_amount;
+            const confirmed = log.is_confirmed === true;
+            const statusBadge = confirmed
+                ? `<span class="badge" style="background:#16a34a; color:white; padding:2px 8px; border-radius:4px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 확인완료</span>`
+                : `<span class="badge" style="background:var(--danger); color:white; padding:2px 8px; border-radius:4px;"><svg class="icon icon-dot" aria-hidden="true"><use href="#i-dot-red"/></svg> 수신완료</span>`;
+            tbody.innerHTML += `<tr>
+                <td style="text-align:left;">${displayPeriod}</td>
+                <td style="text-align:right;">${Number(amt || 0).toLocaleString()}원</td>
+                <td style="text-align:center;">${statusBadge}</td>
+                <td style="text-align:center; white-space:nowrap;">
+                    <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; background:var(--primary); color:white; border:1px solid var(--primary); border-radius:4px; height:auto; display:inline-block;" onclick="viewHotelSentLogDetail('${log.id}')">상세</button>
+                    <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; background:#16a34a; color:white; border:1px solid #16a34a; border-radius:4px; margin-left:4px; height:auto; display:inline-block;" onclick="downloadSentLogExcel('${log.id}', '${displayPeriod}')">Excel</button>
+                </td>
+            </tr>`;
+        });
+
+        window.renderHotelReceivedPaging(totalPages);
+    };
+
+    window.renderHotelReceivedPaging = function (totalPages) {
+        const paging = document.getElementById('hotelReceivedPagination');
+        if (!paging) return;
+        paging.innerHTML = '';
+        if (!_cphReceivedData || totalPages <= 1) return;
+
+        const total = _cphReceivedData.length;
+        const btnStyle = (active) => `padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font-size:13px; font-weight:${active ? '700' : '400'}; background:${active ? 'var(--primary)' : 'white'}; color:${active ? 'white' : '#334155'}; min-width:36px; min-height:36px;`;
+
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '◀';
+        prevBtn.style.cssText = btnStyle(false);
+        prevBtn.disabled = _cphReceivedPage === 1;
+        prevBtn.style.opacity = _cphReceivedPage === 1 ? '0.4' : '1';
+        prevBtn.onclick = () => { _cphReceivedPage--; window.renderHotelReceivedPage(); };
+        paging.appendChild(prevBtn);
+
+        const maxShow = 5;
+        let pageStart = Math.max(1, _cphReceivedPage - Math.floor(maxShow / 2));
+        let pageEnd = Math.min(totalPages, pageStart + maxShow - 1);
+        if (pageEnd - pageStart < maxShow - 1) pageStart = Math.max(1, pageEnd - maxShow + 1);
+
+        for (let i = pageStart; i <= pageEnd; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            btn.style.cssText = btnStyle(i === _cphReceivedPage);
+            btn.onclick = ((p) => () => { _cphReceivedPage = p; window.renderHotelReceivedPage(); })(i);
+            paging.appendChild(btn);
+        }
+
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = '▶';
+        nextBtn.style.cssText = btnStyle(false);
+        nextBtn.disabled = _cphReceivedPage === totalPages;
+        nextBtn.style.opacity = _cphReceivedPage === totalPages ? '0.4' : '1';
+        nextBtn.onclick = () => { _cphReceivedPage++; window.renderHotelReceivedPage(); };
+        paging.appendChild(nextBtn);
+
+        const info = document.createElement('span');
+        info.style.cssText = 'font-size:12px; color:var(--secondary); margin-left:8px; display:inline-block;';
+        info.textContent = `총 ${total}건 / ${_cphReceivedPage}페이지`;
+        paging.appendChild(info);
+    };
+
+    // ── B5: viewSentDetail — 위탁+파트너뷰 display_price 환산 ───────────
+    const _origViewSentDetail = window.viewSentDetail;
+    window.viewSentDetail = async function (hotelName, period, sentLogId, isPartnerView, hotelId, isConfirmed) {
+        if (!isPartnerView || !hotelId) {
+            return _origViewSentDetail.apply(this, arguments);
+        }
+        const { data: h } = await window.mySupabase.from('hotels').select('*').eq('id', hotelId).single();
+        if (!h) { alert('거래처 정보가 없습니다.'); return; }
+        if (!h.is_consignment) {
+            return _origViewSentDetail.apply(this, arguments);
+        }
+
+        const [sDate, eDate] = period.split(' ~ ');
+
+        const { data: invData, error: invErr } = await window.mySupabase
+            .from('invoices')
+            .select('id, date, invoice_items(name, qty, price, unit), staff_name')
+            .eq('factory_id', currentFactoryId)
+            .eq('hotel_id', hotelId)
+            .gte('date', sDate)
+            .lte('date', eDate)
+            .order('date', { ascending: true });
+        if (invErr) { alert('명세서 조회 에러: ' + invErr.message); return; }
+
+        const list = invData || [];
+        if (list.length === 0) { alert('조회된 데이터가 없습니다.'); return; }
+
+        const filteredList = list.filter(inv => {
+            if (!inv.staff_name || !inv.staff_name.startsWith('관리자(차감)')) return true;
+            return inv.staff_name === '관리자(차감)_' + sentLogId;
+        });
+
+        const isSpecial = h.contract_type === 'special' || h.hotel_type === 'special';
+        const typeFilter = isSpecial ? 'special' : 'general';
+        const dpMap = await _getDisplayPriceMap(hotelId, typeFilter);
+
+        const itemInfoMap = {};
+        const dailyData = {};
+        const negativeDailyData = {};
+        let globalHasDeduction = false;
+
+        filteredList.forEach(inv => {
+            (inv.invoice_items || []).forEach(it => {
+                if (!it.name || it.name.trim() === '') return;
+                const isDeduction = (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) || it.name.includes('(차감)') || it.name.includes('(클레임차감)');
+                const cleanName = it.name.replace(' (차감)', '').replace(' (클레임차감)', '').trim();
+                if (isDeduction) {
+                    globalHasDeduction = true;
+                    if (!negativeDailyData[inv.date]) negativeDailyData[inv.date] = {};
+                    negativeDailyData[inv.date][cleanName] = (negativeDailyData[inv.date][cleanName] || 0) + it.qty;
+                } else {
+                    if (!dailyData[inv.date]) dailyData[inv.date] = {};
+                    dailyData[inv.date][cleanName] = (dailyData[inv.date][cleanName] || 0) + it.qty;
+                }
+                if (!itemInfoMap[cleanName]) itemInfoMap[cleanName] = { price: Number(it.price || 0), category: it.category || '기타' };
+            });
+        });
+
+        Object.keys(itemInfoMap).forEach(name => {
+            if (dpMap[name] != null) itemInfoMap[name].price = dpMap[name];
+        });
+
+        let supplyPrice = 0;
+        filteredList.forEach(inv => {
+            (inv.invoice_items || []).forEach(it => {
+                if (!it.name || it.name.trim() === '') return;
+                const cleanName = it.name.replace(' (차감)', '').replace(' (클레임차감)', '').trim();
+                const dp = dpMap[cleanName] != null ? dpMap[cleanName] : Number(it.price || 0);
+                supplyPrice += dp * Number(it.qty || 0);
+            });
+        });
+        supplyPrice = Math.round(supplyPrice);
+        const vat = Math.floor(supplyPrice * 0.1);
+        const totalAmount = supplyPrice + vat;
+
+        const allDates = [];
+        for (let d = new Date(sDate); d <= new Date(eDate); d.setDate(d.getDate() + 1)) {
+            allDates.push(d.toISOString().split('T')[0]);
+        }
+
+        const viewSentTypeFilter = isSpecial ? 'special' : 'general';
+        const { data: priceData } = await window.mySupabase.from('hotel_item_prices')
+            .select('name, category_name')
+            .eq('hotel_id', hotelId)
+            .eq('price_type', viewSentTypeFilter)
+            .order('sort_order', { ascending: true, nullsFirst: false })
+            .order('created_at', { ascending: true });
+
+        let itemNames = [];
+        if (priceData && priceData.length > 0) {
+            const orderedNames = priceData.map(p => p.name).filter(n => itemInfoMap[n]);
+            const extraNames = Object.keys(itemInfoMap).filter(n => !orderedNames.includes(n));
+            itemNames = [...orderedNames, ...extraNames];
+            priceData.forEach(p => {
+                if (itemInfoMap[p.name]) itemInfoMap[p.name].category = p.category_name || '기타';
+            });
+        } else {
+            itemNames = Object.keys(itemInfoMap);
+        }
+
+        let reportHtml = '';
+
+        if (isSpecial) {
+            const { data: catData } = await window.mySupabase.from('hotel_categories')
+                .select('name').eq('hotel_id', hotelId).eq('price_type', 'special').order('created_at');
+            const orderedCats = catData ? catData.map(c => c.name) : [];
+            if (!orderedCats.includes('기타')) orderedCats.push('기타');
+
+            const grouped = {};
+            orderedCats.forEach(c => { grouped[c] = []; });
+            itemNames.forEach(name => {
+                const cat = itemInfoMap[name].category || '기타';
+                if (!grouped[cat]) grouped[cat] = [];
+                const posQty = allDates.reduce((s, d) => s + ((dailyData[d] && dailyData[d][name]) || 0), 0);
+                const negQty = allDates.reduce((s, d) => s + ((negativeDailyData[d] && negativeDailyData[d][name]) || 0), 0);
+                grouped[cat].push({ name, posQty, negQty, netQty: posQty + negQty, price: itemInfoMap[name].price });
+            });
+
+            let categoriesHtml = '';
+            orderedCats.forEach(cat => {
+                if (!grouped[cat] || grouped[cat].length === 0) return;
+                categoriesHtml += `
+                <div style="break-inside:avoid; margin-bottom:5px; border:1px solid #cbd5e1;">
+                    <div style="background:#f1f5f9; padding:2px 4px; font-weight:700; font-size:10px; text-align:center; border-bottom:1px solid #cbd5e1;">${cat}</div>
+                    <table style="width:100%; font-size:10px; border-collapse:collapse; line-height:1.1;">
+                        <thead><tr style="background:#f8fafc;">
+                            <th style="border:1px solid #cbd5e1; padding:2px 3px;">품목</th>
+                            <th style="border:1px solid #cbd5e1; padding:2px 3px;">단가</th>
+                            <th style="border:1px solid #cbd5e1; padding:2px 3px;">수량(합계)</th>
+                            ${globalHasDeduction ? `<th style="border:1px solid #cbd5e1; padding:2px 3px; color:#dc2626;">차감</th>` : ''}
+                            <th style="border:1px solid #cbd5e1; padding:2px 3px;">금액</th>
+                        </tr></thead>
+                        <tbody>
+                            ${grouped[cat].map(it => `<tr>
+                                <td style="border:1px solid #cbd5e1; padding:1px 3px;">${it.name}</td>
+                                <td style="border:1px solid #cbd5e1; padding:1px 3px; text-align:right;">${Number(it.price).toLocaleString()}</td>
+                                <td style="border:1px solid #cbd5e1; padding:1px 3px; text-align:right;">${it.posQty}</td>
+                                ${globalHasDeduction ? `<td style="border:1px solid #cbd5e1; padding:1px 3px; text-align:right; color:#dc2626; font-weight:bold;">${it.negQty < 0 ? it.negQty : '0'}</td>` : ''}
+                                <td style="border:1px solid #cbd5e1; padding:1px 3px; text-align:right;">₩ ${(it.netQty * it.price).toLocaleString()}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+            });
+
+            reportHtml = `
+                <div id="send-report-print-area" style="font-family:'Malgun Gothic',sans-serif; padding:6px;">
+                    <h2 style="text-align:center; font-size:15px; margin:0 0 5px 0; padding-bottom:6px; border-bottom:2px solid #005b9f; color:#0f172a;">세탁 거래명세서 — ${h.name}</h2>
+                    <div style="text-align:right; margin-bottom:5px; font-size:11px; color:#64748b;">조회 기간: ${sDate} ~ ${eDate}</div>
+                    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:5px; align-items:start;">
+                        ${categoriesHtml}
+                    </div>
+                    <div style="margin-top:8px; padding:8px 12px; border:2px solid #005b9f; font-weight:700; font-size:13px; border-radius:6px; background:#eff6ff; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px;">공급가: ₩ ${supplyPrice.toLocaleString()} + VAT: ₩ ${vat.toLocaleString()}</span>
+                        <span>총합계: ₩ ${totalAmount.toLocaleString()}</span>
+                    </div>
+                </div>`;
+        } else {
+            reportHtml = `
+                <div id="send-report-print-area" style="font-family:'Malgun Gothic',sans-serif; padding:6px;">
+                <h2 style="text-align:center; font-size:15px; margin:0 0 5px 0; padding-bottom:6px; border-bottom:2px solid #005b9f; color:#0f172a;">세탁 거래명세서 — ${h.name}</h2>
+                <div style="text-align:right; margin-bottom:5px; font-size:11px; color:#64748b;">조회 기간: ${sDate} ~ ${eDate}</div>
+                <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; margin-top: 3px; border: 1px solid #cbd5e1; font-size: 10px; line-height:1.1;">
+                    <thead>
+                        <tr>
+                            <th style="background: #f1f5f9; padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center; font-weight: 700;">일자</th>
+                            ${itemNames.map(name => `<th style="background: #f1f5f9; padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center; font-weight: 700;">${name}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allDates.map(d => `<tr>
+                            <td style="padding: 1px 3px; border: 1px solid #cbd5e1; text-align: center; background: #f8fafc; font-weight: 600;">${parseInt(d.substring(8))}</td>
+                            ${itemNames.map(name => {
+                                const val = (dailyData[d] && dailyData[d][name]) ? dailyData[d][name] : '0';
+                                const colorStr = val < 0 ? 'color:#dc2626; font-weight:bold;' : '';
+                                return `<td style="padding: 1px 3px; border: 1px solid #cbd5e1; text-align: center; ${colorStr}">${val}</td>`;
+                            }).join('')}
+                        </tr>`).join('')}
+                    </tbody>
+                    <tfoot>
+                        ${globalHasDeduction ? `
+                        <tr style="background: #fee2e2; font-weight: 700; color: #dc2626;">
+                            <td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">월말 차감</td>
+                            ${itemNames.map(name => {
+                                const negQty = allDates.reduce((sum, d) => sum + ((negativeDailyData[d] && negativeDailyData[d][name]) || 0), 0);
+                                return `<td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">${negQty < 0 ? negQty : '0'}</td>`;
+                            }).join('')}
+                        </tr>` : ''}
+                        <tr style="background: #e2e8f0; font-weight: 700;">
+                            <td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">수량 합계</td>
+                            ${itemNames.map(name => {
+                                const posQty = allDates.reduce((sum, d) => sum + ((dailyData[d] && dailyData[d][name]) || 0), 0);
+                                const negQty = allDates.reduce((sum, d) => sum + ((negativeDailyData[d] && negativeDailyData[d][name]) || 0), 0);
+                                return `<td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">${posQty + negQty}</td>`;
+                            }).join('')}
+                        </tr>
+                        <tr style="background: #f1f5f9; font-weight: 700;">
+                            <td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">단가</td>
+                            ${itemNames.map(name => `<td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">${Number(itemInfoMap[name].price).toLocaleString()}</td>`).join('')}
+                        </tr>
+                        <tr style="background: #fef3c7; font-weight: 700;">
+                            <td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">항목 합계</td>
+                            ${itemNames.map(name => {
+                                const posQty = allDates.reduce((sum, d) => sum + ((dailyData[d] && dailyData[d][name]) || 0), 0);
+                                const negQty = allDates.reduce((sum, d) => sum + ((negativeDailyData[d] && negativeDailyData[d][name]) || 0), 0);
+                                const netQty = posQty + negQty;
+                                return `<td style="padding: 2px 3px; border: 1px solid #cbd5e1; text-align: center;">₩ ${(netQty * itemInfoMap[name].price).toLocaleString()}</td>`;
+                            }).join('')}
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
+                <div style="margin-top:8px; padding:8px 12px; border:2px solid #005b9f; font-weight:700; font-size:13px; border-radius:6px; background:#eff6ff; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:12px;">공급가: ₩ ${supplyPrice.toLocaleString()} + VAT: ₩ ${vat.toLocaleString()}</span>
+                    <span>총합계: ₩ ${totalAmount.toLocaleString()}</span>
+                </div>
+                </div>`;
+        }
+
+        let confirmBtnHtml = '';
+        if (isPartnerView && sentLogId) {
+            confirmBtnHtml = isConfirmed
+                ? `<div style="padding:8px 20px; background:#dcfce7; color:#16a34a; font-weight:700; border-radius:8px; font-size:14px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 정산 확인 완료</div>`
+                : `<button onclick="confirmHotelSettlement('${sentLogId}')" style="padding:10px 24px; cursor:pointer; font-size:14px; font-weight:700; background:#16a34a; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg> 정산확인</button>`;
+        }
+
+        reportHtml += `
+        <div class="no-print" style="display:flex; gap:10px; justify-content:center; margin-top:12px; flex-wrap:wrap;">
+            ${confirmBtnHtml}
+            <button onclick="printReport('send-report-print-area')" style="padding:10px 30px; cursor:pointer; font-size:14px; font-weight:700; background:#64748b; color:white; border:none; border-radius:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기</button>
+            <button onclick="closeModal('sendInvoiceModal')" style="padding:10px 20px; cursor:pointer; font-size:14px; font-weight:700; background:#e2e8f0; color:#374151; border:none; border-radius:8px;">닫기</button>
+        </div>`;
+
+        const sendArea = document.getElementById('sendInvoiceArea');
+        sendArea.dataset.hotelName = hotelName;
+        sendArea.dataset.periodStart = sDate || '';
+        sendArea.dataset.periodEnd = eDate || '';
+        sendArea.innerHTML = reportHtml;
+        window.openSendInvoiceModal();
+    };
+
+    // ── B7: downloadSentLogExcel — 위탁 호텔 파트너뷰 display_price 환산 ─
+    const _origDownloadSentLogExcel = window.downloadSentLogExcel;
+    window.downloadSentLogExcel = async function (logId, displayPeriod) {
+        if (!currentHotelId) {
+            return _origDownloadSentLogExcel.apply(this, arguments);
+        }
+
+        const { data: log } = await window.mySupabase
+            .from('sent_logs')
+            .select('id, period, total_amount, hotel_id, hotels(name, is_consignment, contract_type, hotel_type)')
+            .eq('id', logId).single();
+        if (!log || !log.period) { alert('데이터를 불러올 수 없습니다.'); return; }
+        if (!log.hotels?.is_consignment) {
+            return _origDownloadSentLogExcel.apply(this, arguments);
+        }
+
+        const [sDate, eDate] = log.period.split(' ~ ').map(s => s.trim());
+        const hotelName = log.hotels?.name || '거래처';
+        const hotelId = log.hotel_id;
+
+        const { data: h } = await window.mySupabase.from('hotels').select('*').eq('id', hotelId).single();
+        if (!h) { alert('거래처 정보를 불러올 수 없습니다.'); return; }
+
+        const isSpecial = h.contract_type === 'special' || h.hotel_type === 'special';
+        const typeFilter = isSpecial ? 'special' : 'general';
+        const dpMap = await _getDisplayPriceMap(hotelId, typeFilter);
+
+        const { data: invData } = await window.mySupabase
+            .from('invoices').select('id, date, invoice_items(name, qty, price), staff_name')
+            .eq('hotel_id', hotelId).gte('date', sDate).lte('date', eDate).order('date', { ascending: true });
+
+        const list = invData || [];
+        if (list.length === 0) { alert('해당 기간에 명세서 데이터가 없습니다.'); return; }
+
+        const filteredList = list.filter(inv => {
+            if (!inv.staff_name || !inv.staff_name.startsWith('관리자(차감)')) return true;
+            return inv.staff_name === '관리자(차감)_' + logId;
+        });
+
+        const itemInfoMap = {};
+        const dailyData = {};
+        const negativeDailyData = {};
+        let globalHasDeduction = false;
+
+        filteredList.forEach(inv => {
+            (inv.invoice_items || []).forEach(it => {
+                if (!it.name || it.name.trim() === '') return;
+                const isDeduction = (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) || it.name.includes('(차감)') || it.name.includes('(클레임차감)');
+                const cleanName = it.name.replace(' (차감)', '').replace(' (클레임차감)', '').trim();
+                if (isDeduction) {
+                    globalHasDeduction = true;
+                    if (!negativeDailyData[inv.date]) negativeDailyData[inv.date] = {};
+                    negativeDailyData[inv.date][cleanName] = (negativeDailyData[inv.date][cleanName] || 0) + it.qty;
+                } else {
+                    if (!dailyData[inv.date]) dailyData[inv.date] = {};
+                    dailyData[inv.date][cleanName] = (dailyData[inv.date][cleanName] || 0) + it.qty;
+                }
+                if (!itemInfoMap[cleanName]) itemInfoMap[cleanName] = { price: Number(it.price || 0), category: it.category || '기타' };
+            });
+        });
+
+        Object.keys(itemInfoMap).forEach(name => {
+            if (dpMap[name] != null) itemInfoMap[name].price = dpMap[name];
+        });
+
+        let supplyPrice = 0;
+        filteredList.forEach(inv => {
+            (inv.invoice_items || []).forEach(it => {
+                if (!it.name || it.name.trim() === '') return;
+                const cleanName = it.name.replace(' (차감)', '').replace(' (클레임차감)', '').trim();
+                const dp = dpMap[cleanName] != null ? dpMap[cleanName] : Number(it.price || 0);
+                supplyPrice += dp * Number(it.qty || 0);
+            });
+        });
+        supplyPrice = Math.round(supplyPrice);
+
+        const { data: priceOrder } = await window.mySupabase.from('hotel_item_prices')
+            .select('name, category_name').eq('hotel_id', hotelId)
+            .order('sort_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true });
+
+        let itemNames = [];
+        if (priceOrder && priceOrder.length > 0) {
+            const orderedNames = priceOrder.map(p => p.name).filter(n => itemInfoMap[n]);
+            const extraNames = Object.keys(itemInfoMap).filter(n => !orderedNames.includes(n));
+            itemNames = [...orderedNames, ...extraNames];
+            priceOrder.forEach(p => {
+                if (itemInfoMap[p.name]) itemInfoMap[p.name].category = p.category_name || '기타';
+            });
+        } else {
+            itemNames = Object.keys(itemInfoMap);
+        }
+
+        const allDates = [];
+        for (let d = new Date(sDate); d <= new Date(eDate); d.setDate(d.getDate() + 1)) {
+            allDates.push(d.toISOString().split('T')[0]);
+        }
+
+        const C = {
+            primary:  { argb: 'FF005B9F' }, accent: { argb: 'FF00A8E8' },
+            header:   { argb: 'FFF1F5F9' }, catBg:  { argb: 'FFE0F2FE' },
+            sumBg:    { argb: 'FFFEF3C7' }, deductBg: { argb: 'FFFEE2E2' },
+            totalBg:  { argb: 'FFEFF6FF' }, white: { argb: 'FFFFFFFF' },
+            dark:     { argb: 'FF0F172A' }, red:   { argb: 'FFDC2626' }
+        };
+        const border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        const styleCell = (cell, { bg, fontColor, isBold, align, numFmt } = {}) => {
+            if (bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: bg };
+            cell.font = { bold: !!isBold, color: fontColor || C.dark, size: 10 };
+            cell.border = border;
+            cell.alignment = { vertical: 'middle', horizontal: align || 'center', wrapText: true };
+            if (numFmt) cell.numFmt = numFmt;
+        };
+
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('정산내역');
+        ws.views = [{ showGridLines: false }];
+
+        let r;
+
+        if (isSpecial) {
+            const { data: catData } = await window.mySupabase.from('hotel_categories')
+                .select('name').eq('hotel_id', hotelId).order('created_at');
+            const orderedCats = catData ? catData.map(c => c.name) : [];
+            if (!orderedCats.includes('기타')) orderedCats.push('기타');
+
+            const grouped = {};
+            orderedCats.forEach(c => { grouped[c] = []; });
+            itemNames.forEach(name => {
+                const cat = itemInfoMap[name].category || '기타';
+                if (!grouped[cat]) grouped[cat] = [];
+                const posQty = allDates.reduce((s, d) => s + ((dailyData[d] && dailyData[d][name]) || 0), 0);
+                const negQty = allDates.reduce((s, d) => s + ((negativeDailyData[d] && negativeDailyData[d][name]) || 0), 0);
+                grouped[cat].push({ name, posQty, negQty, netQty: posQty + negQty, price: itemInfoMap[name]?.price || 0 });
+            });
+
+            ws.columns = globalHasDeduction
+                ? [{ width: 22 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 16 }]
+                : [{ width: 22 }, { width: 13 }, { width: 12 }, { width: 16 }];
+
+            const maxCol = globalHasDeduction ? 5 : 4;
+            const colLetter = String.fromCharCode(64 + maxCol);
+
+            ws.mergeCells(`A1:${colLetter}1`);
+            const titleCell = ws.getCell('A1');
+            titleCell.value = `세탁 거래명세서 (${hotelName})`;
+            styleCell(titleCell, { bg: C.primary, fontColor: C.white, isBold: true, align: 'center' });
+            titleCell.font = { bold: true, color: C.white, size: 13 };
+            for (let i = 2; i <= maxCol; i++) ws.getCell(1, i).border = border;
+
+            ws.mergeCells(`A2:${colLetter}2`);
+            const periodCell = ws.getCell('A2');
+            periodCell.value = `조회 기간: ${log.period}`;
+            styleCell(periodCell, { bg: C.header, align: 'center' });
+            for (let i = 2; i <= maxCol; i++) ws.getCell(2, i).border = border;
+
+            let rowNum = 3;
+            orderedCats.forEach(cat => {
+                if (!grouped[cat] || grouped[cat].length === 0) return;
+                ws.mergeCells(`A${rowNum}:${colLetter}${rowNum}`);
+                const catCell = ws.getCell(`A${rowNum}`);
+                catCell.value = cat;
+                styleCell(catCell, { bg: C.catBg, isBold: true, align: 'left' });
+                for (let i = 2; i <= maxCol; i++) ws.getCell(rowNum, i).border = border;
+                ws.getRow(rowNum).height = 20;
+                rowNum++;
+
+                const headers = globalHasDeduction ? ['품목', '단가(원)', '수량(합계)', '차감', '금액(원)'] : ['품목', '단가(원)', '수량(합계)', '금액(원)'];
+                headers.forEach((v, i) => {
+                    const c = ws.getCell(rowNum, i + 1);
+                    c.value = v;
+                    styleCell(c, { bg: C.accent, fontColor: C.white, isBold: true });
+                    if (v === '차감') c.font.color = C.red;
+                });
+                ws.getRow(rowNum).height = 18;
+                rowNum++;
+
+                grouped[cat].forEach(it => {
+                    const vals = globalHasDeduction
+                        ? [it.name, it.price, it.posQty, it.negQty !== 0 ? it.negQty : '0', it.price * it.netQty]
+                        : [it.name, it.price, it.posQty, it.price * it.netQty];
+                    vals.forEach((v, i) => {
+                        const c = ws.getCell(rowNum, i + 1);
+                        c.value = v;
+                        styleCell(c, { align: i === 0 ? 'left' : 'right', numFmt: i > 0 && typeof v === 'number' ? '#,##0' : undefined });
+                        if (globalHasDeduction && i === 3 && v < 0) c.font.color = C.red;
+                    });
+                    rowNum++;
+                });
+                rowNum++;
+            });
+
+            const vat = Math.floor(supplyPrice * 0.1);
+            const totalAmt = supplyPrice + vat;
+
+            ws.mergeCells(`A${rowNum}:B${rowNum}`);
+            const sc = ws.getCell(`A${rowNum}`);
+            sc.value = `공급가: ₩ ${supplyPrice.toLocaleString()}`;
+            styleCell(sc, { bg: C.totalBg, isBold: true, align: 'center' });
+            sc.font = { bold: true, color: C.primary, size: 11 };
+            ws.getCell(`B${rowNum}`).border = border;
+            ws.mergeCells(globalHasDeduction ? `C${rowNum}:E${rowNum}` : `C${rowNum}:D${rowNum}`);
+            const vc = ws.getCell(`C${rowNum}`);
+            vc.value = `부가세: ₩ ${vat.toLocaleString()}`;
+            styleCell(vc, { bg: C.totalBg, isBold: true, align: 'center' });
+            vc.font = { bold: true, color: { argb: 'FF64748B' }, size: 11 };
+
+            rowNum++;
+            ws.mergeCells(`A${rowNum}:${colLetter}${rowNum}`);
+            const tc = ws.getCell(`A${rowNum}`);
+            tc.value = `총 합계: ₩ ${totalAmt.toLocaleString()}`;
+            styleCell(tc, { bg: C.primary, isBold: true, align: 'center' });
+            tc.font = { bold: true, color: C.white, size: 13 };
+            for (let i = 2; i <= maxCol; i++) ws.getCell(rowNum, i).border = border;
+            ws.getRow(rowNum).height = 24;
+            ws.pageSetup.printArea = `A1:${colLetter}${rowNum}`;
+            r = rowNum;
+        } else {
+            ws.columns = [{ width: 10 }, ...itemNames.map(() => ({ width: 10 }))];
+            const maxCol = 1 + itemNames.length;
+            let colLetter;
+            if (maxCol <= 26) {
+                colLetter = String.fromCharCode(64 + maxCol);
+            } else {
+                colLetter = String.fromCharCode(64 + Math.floor((maxCol - 1) / 26)) + String.fromCharCode(65 + ((maxCol - 1) % 26));
+            }
+
+            ws.mergeCells(`A1:${colLetter}1`);
+            const t = ws.getCell('A1');
+            t.value = `세탁 거래명세서 (${hotelName})`;
+            styleCell(t, { bg: C.primary, fontColor: C.white, isBold: true, align: 'center' });
+            t.font = { bold: true, color: C.white, size: 13 };
+            ws.getRow(1).height = 24;
+
+            ws.mergeCells(`A2:${colLetter}2`);
+            const p = ws.getCell('A2');
+            p.value = `조회 기간: ${log.period}`;
+            styleCell(p, { bg: C.header, align: 'right' });
+            p.font = { color: { argb: 'FF64748B' }, size: 11 };
+
+            ws.getCell('A3').value = '일자';
+            styleCell(ws.getCell('A3'), { bg: C.header, isBold: true });
+            itemNames.forEach((n, i) => {
+                const c = ws.getCell(3, i + 2);
+                c.value = n;
+                styleCell(c, { bg: C.header, isBold: true });
+            });
+
+            r = 4;
+            allDates.forEach(d => {
+                const dr = ws.getCell(r, 1);
+                dr.value = d.slice(8) + '일';
+                styleCell(dr, { isBold: true, bg: C.white });
+                itemNames.forEach((n, i) => {
+                    const c = ws.getCell(r, i + 2);
+                    const val = (dailyData[d] && dailyData[d][n]) ? dailyData[d][n] : 0;
+                    c.value = val;
+                    styleCell(c, { numFmt: '#,##0' });
+                    if (val < 0) c.font.color = C.red;
+                });
+                r++;
+            });
+
+            if (globalHasDeduction) {
+                ws.getCell(r, 1).value = '월말 차감';
+                styleCell(ws.getCell(r, 1), { bg: C.deductBg, fontColor: C.red, isBold: true });
+                itemNames.forEach((n, i) => {
+                    const negQty = allDates.reduce((s, d) => s + ((negativeDailyData[d] && negativeDailyData[d][n]) || 0), 0);
+                    const c = ws.getCell(r, i + 2);
+                    c.value = negQty < 0 ? negQty : 0;
+                    styleCell(c, { bg: C.deductBg, fontColor: C.red, isBold: true, numFmt: '#,##0' });
+                });
+                r++;
+            }
+
+            ws.getCell(r, 1).value = '수량 합계';
+            styleCell(ws.getCell(r, 1), { bg: C.header, isBold: true });
+            itemNames.forEach((n, i) => {
+                const posQty = allDates.reduce((s, d) => s + ((dailyData[d] && dailyData[d][n]) || 0), 0);
+                const negQty = allDates.reduce((s, d) => s + ((negativeDailyData[d] && negativeDailyData[d][n]) || 0), 0);
+                const c = ws.getCell(r, i + 2);
+                c.value = posQty + negQty;
+                styleCell(c, { bg: C.header, isBold: true, numFmt: '#,##0' });
+            });
+            r++;
+
+            ws.getCell(r, 1).value = '단가';
+            styleCell(ws.getCell(r, 1), { bg: C.white, isBold: true });
+            itemNames.forEach((n, i) => {
+                const c = ws.getCell(r, i + 2);
+                c.value = itemInfoMap[n]?.price || 0;
+                styleCell(c, { isBold: true, numFmt: '#,##0' });
+            });
+            r++;
+
+            ws.getCell(r, 1).value = '항목 합계';
+            styleCell(ws.getCell(r, 1), { bg: C.sumBg, fontColor: C.primary, isBold: true });
+            itemNames.forEach((n, i) => {
+                const posQty = allDates.reduce((s, d) => s + ((dailyData[d] && dailyData[d][n]) || 0), 0);
+                const negQty = allDates.reduce((s, d) => s + ((negativeDailyData[d] && negativeDailyData[d][n]) || 0), 0);
+                const c = ws.getCell(r, i + 2);
+                c.value = (posQty + negQty) * (itemInfoMap[n]?.price || 0);
+                styleCell(c, { bg: C.sumBg, fontColor: C.primary, isBold: true, numFmt: '#,##0' });
+            });
+            r++;
+
+            const vat = Math.floor(supplyPrice * 0.1);
+            const totalAmt = supplyPrice + vat;
+            ws.mergeCells(`A${r}:${colLetter}${r}`);
+            const totalRow = ws.getCell(`A${r}`);
+            totalRow.value = `공급가액: ₩ ${supplyPrice.toLocaleString()}  |  부가세: ₩ ${vat.toLocaleString()}  |  총 합계: ₩ ${totalAmt.toLocaleString()}`;
+            styleCell(totalRow, { bg: C.primary, fontColor: C.white, isBold: true, align: 'center' });
+            ws.getRow(r).height = 24;
+        }
+
+        try {
+            const { data: fInfo } = await window.mySupabase
+                .from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
+            if (fInfo && fInfo.bank_info) {
+                r++;
+                const colLetter2 = String.fromCharCode(64 + itemNames.length + 1);
+                ws.mergeCells(`A${r}:${colLetter2}${r}`);
+                const bankRow = ws.getCell(`A${r}`);
+                bankRow.value = `입금 계좌 정보: ${fInfo.bank_info}`;
+                styleCell(bankRow, { bg: { argb: 'FFF0FDF4' }, fontColor: { argb: 'FF166534' }, isBold: true, align: 'left' });
+                ws.getRow(r).height = 20;
+            }
+        } catch (e) { console.warn('[엑셀 계좌 정보 추가 실패]', e); }
+
+        const buffer = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safePeriod = log.period.replace(/\s+/g, '').replace(/~/g, '_');
+        a.download = `${hotelName}_${safePeriod}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
 })();
