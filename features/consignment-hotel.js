@@ -1,4 +1,4 @@
-// 위탁 호텔 이중 단가 — 묶음 1: 거래처 위탁 토글 + 단가 2칸 입력/저장
+// 위탁 호텔 이중 단가 — 묶음 1+: 거래처 위탁 토글 + 단가 2칸 + 비번검증 + 순서컬럼 + 이름한줄
 // override: openHotelModal, saveNewHotel, openPriceSetting,
 //           loadSimplePriceList, addSimpleItem,
 //           loadHotelPriceList, addHotelCustomItem, updateHotelItemPrice
@@ -38,9 +38,20 @@
         if (r) r.checked = true;
     };
 
-    // ── saveNewHotel: callAccountAdmin 일시 래핑으로 is_consignment 주입 ──
+    // ── saveNewHotel: 비번 6자 검증 + callAccountAdmin 일시 래핑으로 is_consignment 주입 ──
     const _origSaveNewHotel = window.saveNewHotel;
     window.saveNewHotel = async function () {
+        const pwVal = (document.getElementById('h_loginPw')?.value || '').trim();
+        const isEdit = !!window.editingHotelIdForInfo;
+        if (!isEdit && pwVal.length < 6) {
+            alert('비밀번호는 6자 이상이어야 합니다.');
+            return;
+        }
+        if (isEdit && pwVal.length > 0 && pwVal.length < 6) {
+            alert('비밀번호는 6자 이상이어야 합니다.');
+            return;
+        }
+
         const _origCaa = window.callAccountAdmin;
         window.callAccountAdmin = async function (payload) {
             if (payload.action === 'create_hotel' || payload.action === 'update_hotel') {
@@ -86,25 +97,26 @@
         const thead = tbody.closest('table').querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? '<th>품목</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
-                : '<th>품목</th><th>단가</th><th>단위</th><th>관리</th>';
+                ? '<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
+                : '<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>단가</th><th>단위</th><th>관리</th>';
         }
 
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            const cols = isC ? 5 : 4;
+            const cols = isC ? 6 : 5;
             tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center; padding:20px;">등록된 품목이 없습니다.</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = items.map(it => {
+        tbody.innerHTML = items.map((it, idx) => {
             const pw = isC ? '76px' : '100px';
             const dpVal = it.display_price != null ? it.display_price : '';
             const dpCell = isC
                 ? `<td><input type="number" value="${dpVal}" placeholder="미설정" onchange="updateHotelItemPrice('${it.id}', this.value, 'display_price')" style="width:76px; padding:4px;">원</td>`
                 : '';
             return `<tr>
-                <td><strong>${it.name}</strong></td>
+                <td style="text-align:center; color:#94a3b8; font-size:12px;">${idx + 1}</td>
+                <td style="white-space:nowrap !important;"><strong>${it.name}</strong></td>
                 <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value, 'price')" style="width:${pw}; padding:4px;">원</td>
                 ${dpCell}
                 <td>${it.unit}</td>
@@ -217,13 +229,13 @@
         const thead = tbody.closest('table').querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? '<th>카테고리</th><th>품목명</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
-                : '<th>카테고리</th><th>품목명</th><th>단가</th><th>단위</th><th>관리</th>';
+                ? '<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
+                : '<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>단가</th><th>단위</th><th>관리</th>';
         }
 
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            const cols = isC ? 6 : 5;
+            const cols = isC ? 7 : 6;
             tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center; padding:20px;">등록된 품목이 없습니다.</td></tr>`;
             return;
         }
@@ -235,15 +247,16 @@
             return it.category_name !== '삭제';
         });
 
-        tbody.innerHTML = filteredItems.map(it => {
+        tbody.innerHTML = filteredItems.map((it, idx) => {
             const pw = isC ? '76px' : '100px';
             const dpVal = it.display_price != null ? it.display_price : '';
             const dpCell = isC
                 ? `<td><input type="number" value="${dpVal}" placeholder="미설정" onchange="updateHotelItemPrice('${it.id}', this.value, 'display_price')" style="width:76px; padding:4px;">원</td>`
                 : '';
             return `<tr>
+                <td style="text-align:center; color:#94a3b8; font-size:12px;">${idx + 1}</td>
                 <td style="background:#f8fafc;"><span class="badge" style="background:#e2e8f0; color:#334155;">${it.category_name}</span></td>
-                <td><strong>${it.name}</strong></td>
+                <td style="white-space:nowrap !important;"><strong>${it.name}</strong></td>
                 <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value, 'price')" style="width:${pw}; padding:4px;">원</td>
                 ${dpCell}
                 <td>${it.unit}</td>
