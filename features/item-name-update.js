@@ -204,8 +204,8 @@
                 row.insertBefore(td, row.firstChild);
             }
 
-            // 핸들 삽입 후 name 셀 위치: hotelPriceList → col 2, simplePriceList → col 1
-            const nameCellIdx = deletePattern === 'deleteHotelPrice' ? 2 : 1;
+            // 핸들 삽입 후 name 셀 위치: hotelPriceList → col 3(순서+카테고리), simplePriceList → col 2(순서)
+            const nameCellIdx = deletePattern === 'deleteHotelPrice' ? 3 : 2;
             const nameCell = row.querySelectorAll('td')[nameCellIdx];
             if (!nameCell || nameCell.querySelector('input[data-old-name]')) return;
             const strong = nameCell.querySelector('strong');

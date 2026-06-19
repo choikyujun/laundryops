@@ -1,9 +1,13 @@
-// 위탁 호텔 이중 단가 — 묶음 1+: 거래처 위탁 토글 + 단가 2칸 + 비번검증 + 순서컬럼 + 이름한줄
+// 위탁 호텔 이중 단가 — 묶음 1+: 거래처 위탁 토글 + 단가 2칸 + 비번검증 + 순서컬럼 + 이름한줄 + 이동컬럼 + 설명글
 // override: openHotelModal, saveNewHotel, openPriceSetting,
 //           loadSimplePriceList, addSimpleItem,
 //           loadHotelPriceList, addHotelCustomItem, updateHotelItemPrice
 (function () {
     'use strict';
+
+    // item-name-update.js 존재 여부 → "이동" 헤더 및 colspan 조정
+    const _hasDrag = typeof window.updateItemNameWithCascade !== 'undefined';
+    const _moveTh = _hasDrag ? '<th style="width:28px; text-align:center;">이동</th>' : '';
 
     // ── UI 헬퍼: 단가 입력 폼 위탁/직영 전환 ─────────────────────────
     function _applyConsignmentPriceUI(isC) {
@@ -94,16 +98,28 @@
         const tbody = document.getElementById('simplePriceList');
         if (!tbody) return;
 
-        const thead = tbody.closest('table').querySelector('thead tr');
+        const table = tbody.closest('table');
+        const thead = table.querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? '<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
-                : '<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>단가</th><th>단위</th><th>관리</th>';
+                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>`
+                : `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>단가</th><th>단위</th><th>관리</th>`;
         }
+
+        // 설명글 (위탁일 때만 표시)
+        let _sdesc = document.getElementById('cph-price-desc-simple');
+        if (!_sdesc) {
+            _sdesc = document.createElement('div');
+            _sdesc.id = 'cph-price-desc-simple';
+            _sdesc.style.cssText = 'font-size:11px; color:#64748b; padding:2px 0 6px;';
+            _sdesc.textContent = '우리 단가 = 직영점 단가  ·  호텔 단가 = 위탁세탁 단가';
+            table.parentNode.insertBefore(_sdesc, table);
+        }
+        _sdesc.style.display = isC ? '' : 'none';
 
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            const cols = isC ? 6 : 5;
+            const cols = (isC ? 6 : 5) + (_hasDrag ? 1 : 0);
             tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center; padding:20px;">등록된 품목이 없습니다.</td></tr>`;
             return;
         }
@@ -226,16 +242,28 @@
         const tbody = document.getElementById('hotelPriceList');
         if (!tbody) return;
 
-        const thead = tbody.closest('table').querySelector('thead tr');
+        const table = tbody.closest('table');
+        const thead = table.querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? '<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>'
-                : '<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>단가</th><th>단위</th><th>관리</th>';
+                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>`
+                : `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>단가</th><th>단위</th><th>관리</th>`;
         }
+
+        // 설명글 (위탁일 때만 표시)
+        let _hdesc = document.getElementById('cph-price-desc-hotel');
+        if (!_hdesc) {
+            _hdesc = document.createElement('div');
+            _hdesc.id = 'cph-price-desc-hotel';
+            _hdesc.style.cssText = 'font-size:11px; color:#64748b; padding:2px 0 6px;';
+            _hdesc.textContent = '우리 단가 = 직영점 단가  ·  호텔 단가 = 위탁세탁 단가';
+            table.parentNode.insertBefore(_hdesc, table);
+        }
+        _hdesc.style.display = isC ? '' : 'none';
 
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            const cols = isC ? 7 : 6;
+            const cols = (isC ? 7 : 6) + (_hasDrag ? 1 : 0);
             tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center; padding:20px;">등록된 품목이 없습니다.</td></tr>`;
             return;
         }
