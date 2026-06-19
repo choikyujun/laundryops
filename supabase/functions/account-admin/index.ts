@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
         const { login_id, password, fields = {} } = body;
         if (!login_id || !password) return json({ error: "login_id, password 필요" }, 400);
         const hId = "h_" + Date.now();
-        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date"];
+        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment"];
         const row: Record<string, unknown> = { id: hId, factory_id: caller.factoryId, login_id };
         for (const k of allow) if (k in fields) row[k] = fields[k];
         const res = await createAccount("hotel", login_id, password,
@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
           if (new_password) upd.password = new_password;
           if (Object.keys(upd).length) { const { error } = await admin.auth.admin.updateUserById(u.id, upd); if (error) return json({ error: error.message }, 400); }
         }
-        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date"];
+        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment"];
         const row: Record<string, unknown> = {};
         for (const k of allow) if (k in fields) row[k] = fields[k];
         if (new_login_id) row.login_id = new_login_id;
