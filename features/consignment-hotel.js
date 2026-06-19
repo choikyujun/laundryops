@@ -338,4 +338,225 @@
         await window.loadHotelPriceList();
     };
 
+    // ── _getDisplayPriceMap: 위탁 단가표 name → display_price(없으면 price) 맵 ──
+    async function _getDisplayPriceMap(hotelId, typeFilter) {
+        const { data } = await window.mySupabase
+            .from('hotel_item_prices')
+            .select('name, price, display_price')
+            .eq('hotel_id', hotelId)
+            .eq('price_type', typeFilter);
+        const map = {};
+        (data || []).forEach(row => {
+            map[row.name] = row.display_price != null ? Number(row.display_price) : Number(row.price);
+        });
+        return map;
+    }
+
+    // ── loadHotelDashboard: B1(카드) + B2(입고현황) 위탁 display_price 환산 ─
+    const _origLoadHotelDashboard = window.loadHotelDashboard;
+    window.loadHotelDashboard = async function () {
+        await _origLoadHotelDashboard();
+        if (!currentHotelId) return;
+
+        const { data: hData } = await window.mySupabase
+            .from('hotels')
+            .select('is_consignment, contract_type, hotel_type')
+            .eq('id', currentHotelId)
+            .single();
+        if (!hData || !hData.is_consignment) return;
+
+        const isSpecial = hData.contract_type === 'special' || hData.hotel_type === 'special';
+        const typeFilter = isSpecial ? 'special' : 'general';
+        const dpMap = await _getDisplayPriceMap(currentHotelId, typeFilter);
+
+        // 월 범위 (원본과 동일 로직)
+        const sMonth = document.getElementById('hotelInvoiceMonth')?.value || getTodayString().substring(0, 7);
+        const [sY, sM] = sMonth.split('-').map(Number);
+        const lastDay = new Date(sY, sM, 0).getDate();
+        const sMonthStart = sMonth + '-01';
+        const sMonthEnd = sMonth + '-' + String(lastDay).padStart(2, '0');
+
+        // invoice 목록 재조회
+        const { data: invListRaw } = await window.mySupabase
+            .from('invoices')
+            .select('id, date, total_amount, staff_name')
+            .eq('hotel_id', currentHotelId)
+            .gte('date', sMonthStart)
+            .lte('date', sMonthEnd)
+            .order('date', { ascending: false });
+        const invList = (invListRaw || []).filter(inv =>
+            !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))
+        );
+        const invIds = invList.map(inv => inv.id);
+
+        // invoice_items 재조회 (invoice_id + price 포함) → display 합계 산출
+        const displayTotalByInvoice = {};
+        if (invIds.length > 0) {
+            const { data: itemRows } = await window.mySupabase
+                .from('invoice_items')
+                .select('invoice_id, name, qty, price')
+                .in('invoice_id', invIds);
+            (itemRows || []).forEach(it => {
+                const dp = dpMap[it.name] != null ? dpMap[it.name] : Number(it.price || 0);
+                displayTotalByInvoice[it.invoice_id] = (displayTotalByInvoice[it.invoice_id] || 0) + dp * Number(it.qty || 0);
+            });
+        }
+
+        // tbody + 카드 재렌더 (display 금액으로 교체)
+        const tbody = document.getElementById('hotelInvoiceList');
+        if (tbody) tbody.innerHTML = '';
+        let total = 0;
+        invList.forEach(inv => {
+            const invSum = Math.round(displayTotalByInvoice[inv.id] ?? Number(inv.total_amount || 0));
+            total += invSum;
+            if (tbody) {
+                tbody.innerHTML += `<tr>
+                    <td>${inv.date}</td>
+                    <td style="text-align:right;">${invSum.toLocaleString()}원</td>
+                    <td><span class="badge" style="background:var(--success)">입고완료</span></td>
+                    <td><button class="btn btn-neutral" style="padding:4px 8px; font-size:11px;" onclick="viewInvoiceDetail('${inv.id}')">보기</button></td>
+                </tr>`;
+            }
+        });
+        if (tbody && tbody.innerHTML === '') {
+            tbody.innerHTML = `<tr><td colspan="4" style="padding:30px; color:gray;">${sMonth} 입고 내역 없음</td></tr>`;
+        }
+        const elTotal = document.getElementById('hotelMonthlyTotal');
+        if (elTotal) elTotal.innerText = total.toLocaleString() + '원';
+    };
+
+    // ── viewInvoiceDetail: B6 위탁+파트너뷰일 때 display_price 환산 ─────
+    window.viewInvoiceDetail = async function (id) {
+        const { data: inv, error } = await window.mySupabase.from('invoices')
+            .select('*, hotels(name, contract_type, hotel_type, is_consignment), invoice_items(name, qty, price, unit)')
+            .eq('id', id)
+            .single();
+        if (error || !inv) { alert('데이터를 찾을 수 없습니다.'); return; }
+
+        const isSpecial = inv.hotels && (inv.hotels.contract_type === 'special' || inv.hotels.hotel_type === 'special');
+        const typeFilter = isSpecial ? 'special' : 'general';
+        const isConsignment = !!(inv.hotels && inv.hotels.is_consignment);
+        const isHotelView = !!currentHotelId;
+
+        const dpMap = (isConsignment && isHotelView) ? await _getDisplayPriceMap(inv.hotel_id, typeFilter) : {};
+
+        const savedItemsMap = {};
+        (inv.invoice_items || []).forEach(it => { savedItemsMap[it.name] = Number(it.qty || 0); });
+
+        let { data: priceList } = await window.mySupabase.from('hotel_item_prices')
+            .select('name, price, unit, sort_order, category_name')
+            .eq('hotel_id', inv.hotel_id)
+            .eq('price_type', typeFilter)
+            .order('sort_order', { ascending: true, nullsFirst: false });
+
+        if (!priceList || priceList.length === 0) {
+            const { data: defaultList } = await window.mySupabase.from('factory_default_prices')
+                .select('name, price, unit, sort_order')
+                .eq('factory_id', inv.factory_id)
+                .order('sort_order', { ascending: true, nullsFirst: false });
+            if (defaultList && defaultList.length > 0) {
+                priceList = defaultList.map(p => ({ ...p, category_name: '기본' }));
+            }
+        }
+
+        const mergedItems = [];
+        if (priceList && priceList.length > 0) {
+            priceList.forEach(p => {
+                const base = Number(p.price || 0);
+                const price = (isConsignment && isHotelView && dpMap[p.name] != null) ? dpMap[p.name] : base;
+                mergedItems.push({ name: p.name, price, qty: savedItemsMap[p.name] || 0, category: p.category_name || '기타' });
+            });
+        } else {
+            (inv.invoice_items || []).forEach(it => {
+                const base = Number(it.price || 0);
+                const price = (isConsignment && isHotelView && dpMap[it.name] != null) ? dpMap[it.name] : base;
+                mergedItems.push({ name: it.name, price, qty: Number(it.qty || 0), category: '기타' });
+            });
+        }
+
+        const supplyPrice = mergedItems.reduce((s, it) => s + (it.price * it.qty), 0);
+        let reportHtml = '';
+
+        if (isSpecial) {
+            const grouped = {}, catOrder = [];
+            mergedItems.forEach(it => {
+                const cat = it.category;
+                if (!grouped[cat]) { grouped[cat] = []; catOrder.push(cat); }
+                grouped[cat].push(it);
+            });
+            let categoriesHtml = '';
+            catOrder.forEach(cat => {
+                if (grouped[cat].length === 0) return;
+                categoriesHtml += `
+                <div style="break-inside: avoid; margin-bottom:5px; border:1px solid #cbd5e1;">
+                    <div style="background:#f1f5f9; padding:3px; font-weight:700; text-align:center; border-bottom:1px solid #cbd5e1;">${cat}</div>
+                    <table style="width:100%; font-size:9px; border-collapse:collapse;">
+                        <thead><tr style="background:#f8fafc;">
+                            <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">품목</th>
+                            <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">단가</th>
+                            <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">수량</th>
+                            <th style="padding:1px 2px;">금액</th>
+                        </tr></thead>
+                        <tbody>
+                            ${grouped[cat].map(it => `<tr>
+                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px;">${it.name}</td>
+                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.price.toLocaleString()}</td>
+                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.qty}</td>
+                                <td style="padding:1px 2px; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+            });
+            reportHtml = `
+                <h1 style="text-align:center; border-bottom:2px solid #000; padding-bottom:5px; margin-bottom:5px; font-size:18px;">거래명세서 상세 (${inv.hotels ? inv.hotels.name : ''})</h1>
+                <div style="text-align:right; margin-bottom:5px; font-size:12px;">발행 일자: ${inv.date} | 담당자: ${inv.staff_name || ''}</div>
+                <div style="display:grid !important; grid-template-columns: repeat(2, 1fr) !important; gap:6px !important; align-items:start !important; padding:3px !important; width: 100% !important;">
+                    ${categoriesHtml}
+                </div>
+                <div style="margin-top:10px; padding:10px; border:2px solid #000; text-align:right; font-weight:700; font-size:13px; border-radius:8px;">
+                    공급가: ₩ ${supplyPrice.toLocaleString()}
+                </div>`;
+        } else {
+            reportHtml = `
+            <div id="report-to-print" style="padding:10px; font-family:'Malgun Gothic', sans-serif;">
+                <h1 style="text-align:center; color:#0f172a; border-bottom:3px solid #005b9f; padding-bottom:5px; margin-bottom:10px; font-size:18px;">세탁 명세서 (${inv.hotels ? inv.hotels.name : ''})</h1>
+                <div style="text-align:left; margin-bottom:5px; color:#0f172a; font-size:12px; font-weight:700;">발행일: ${inv.date} | 담당자: ${inv.staff_name || ''}</div>
+                <table style="width:100%; border-collapse:collapse; margin-top:5px; font-size:12px; border:1px solid #cbd5e1;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:left;">품목</th>
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">단가</th>
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">수량</th>
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">금액</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${mergedItems.map(it => `
+                        <tr>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:left;">${it.name || '알수없음'}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.price.toLocaleString()}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.qty}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight:700; background:#e2e8f0;">
+                            <td colspan="3" style="padding:4px; border:1px solid #cbd5e1; text-align:right;">공급가</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${supplyPrice.toLocaleString()}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>`;
+        }
+
+        reportHtml += `
+        <div style="text-align:center; margin-top:10px;">
+            <button class="btn btn-neutral" onclick="printInvoiceDetail()" style="padding:10px 30px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 영수증 인쇄</button>
+        </div>`;
+
+        document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
+        openModal('invoiceDetailModal');
+    };
+
 })();
