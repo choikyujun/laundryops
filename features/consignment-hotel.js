@@ -1057,8 +1057,7 @@
                 const { data: factoryHotels, error: hotelErr } = await window.mySupabase
                     .from('hotels').select('id').eq('factory_id', currentFactoryId);
                 const hotelIds = (factoryHotels || []).map(h => h.id);
-                console.log('[growthRate diag] factoryId:', currentFactoryId, 'hotelIds:', hotelIds, 'hotelErr:', hotelErr);
-                if (hotelIds.length === 0) { console.log('[growthRate diag] hotelIds empty, early return'); return; }
+                if (hotelIds.length === 0) { return; }
 
                 const [curRes, prevRes] = await Promise.all([
                     window.mySupabase.from('invoices').select('total_amount')
@@ -1069,12 +1068,8 @@
                         .gte('date', prevMonthStr + '-01').lte('date', prevEnd)
                 ]);
 
-                console.log('[growthRate diag] curRange:', curMonthStr+'-01', '~', todayStr, 'curRows:', curRes.data?.length, 'curErr:', curRes.error);
-                console.log('[growthRate diag] prevRange:', prevMonthStr+'-01', '~', prevEnd, 'prevRows:', prevRes.data?.length, 'prevErr:', prevRes.error);
-
                 const curTotal = (curRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
                 const prevTotal = (prevRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
-                console.log('[growthRate diag] curTotal:', curTotal, 'prevTotal:', prevTotal);
 
                 let g = 0;
                 if (prevTotal > 0) {

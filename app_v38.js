@@ -4016,7 +4016,6 @@ window.addEventListener('hashchange', () => {
 
 window.loadAdminDashboard = async function() {
     if (typeof window.loadGlobalNotice === 'function') window.loadGlobalNotice();
-    console.log("DEBUG: [v37] loadAdminDashboard DB version started");
 
     const statsMonth = document.getElementById('adminStatsMonth');
     if (statsMonth && !statsMonth.value) statsMonth.value = getTodayString().substring(0, 7);
@@ -6789,7 +6788,6 @@ window.viewInvoiceDetail = async function(id) {
     document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
     openModal('invoiceDetailModal');
 };window.calculateAdminDashStats = async function() {
-    console.log("DEBUG: Final unified calculateAdminDashStats started");
     const curMonth = document.getElementById('adminStatsMonth')?.value || getTodayString().substring(0, 7);
     const todayStr = getTodayString();
 
@@ -6828,7 +6826,7 @@ window.viewInvoiceDetail = async function(id) {
     const prevYearStart = prevYear + '-01-01';
 
     function growthHtml(cur, prev) {
-        if (prev === 0 && cur > 0) return `<span style="color:var(--success);">&#9650; 100.0%</span>`;
+        if (prev <= 0 && cur > 0) return `<span style="color:var(--success);">&#9650; 100.0%</span>`;
         if (prev > 0) {
             const g = ((cur - prev) / prev) * 100;
             const absG = Math.abs(g);
@@ -6975,9 +6973,6 @@ window.viewInvoiceDetail = async function(id) {
     const rToday = Math.round(todayRev), rPrevDay = Math.round(prevDayRev);
     const rMonth = Math.round(monthRev), rPrevMonth = Math.round(prevMonthRev);
     const rYear = Math.round(yearRev), rPrevYear = Math.round(prevYearRev);
-    console.log('[dashDiag] todayStr:', todayStr, 'prevDayStr:', prevDayStr, 'todayData rows:', (todayData||[]).length, 'prevDayData rows:', (prevDayData||[]).length);
-    console.log('[dashDiag] todayRev:', todayRev, 'prevDayRev:', prevDayRev, ' → rToday:', rToday, 'rPrevDay:', rPrevDay);
-
     const el1 = document.getElementById('adminTodayRevenue');
     if(el1) el1.innerText = rToday.toLocaleString() + '원';
     const elTG = document.getElementById('adminTodayGrowth');
