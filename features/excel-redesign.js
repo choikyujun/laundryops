@@ -160,7 +160,7 @@
       return inv.staff_name === '관리자(차감)_' + logId;
     });
 
-    const supplyPrice = filteredList.reduce(function (sum, inv) {
+    let supplyPrice = filteredList.reduce(function (sum, inv) {
       return sum + (inv.invoice_items || []).reduce(function (s, it) {
         return s + (Number(it.price || 0) * Number(it.qty || 0));
       }, 0);
@@ -216,6 +216,31 @@
       });
     } else {
       itemNames = Object.keys(itemInfoMap);
+    }
+
+    // ── display_price 환산 (위탁 호텔 파트너뷰: currentHotelId && is_consignment) ─────
+    if (currentHotelId && h.is_consignment) {
+      var _typeFilter = isSpecial ? 'special' : 'general';
+      var _dpResult = await window.mySupabase
+        .from('hotel_item_prices').select('name, price, display_price')
+        .eq('hotel_id', hotelId).eq('price_type', _typeFilter);
+      var _dpMap = {};
+      (_dpResult.data || []).forEach(function (row) {
+        _dpMap[row.name] = row.display_price != null ? Number(row.display_price) : Number(row.price);
+      });
+      Object.keys(itemInfoMap).forEach(function (name) {
+        if (_dpMap[name] != null) itemInfoMap[name].price = _dpMap[name];
+      });
+      var _newSupply = 0;
+      filteredList.forEach(function (inv) {
+        (inv.invoice_items || []).forEach(function (it) {
+          if (!it.name || it.name.trim() === '') return;
+          var cn = it.name.replace(' (차감)', '').replace(' (클레임차감)', '').trim();
+          var dp = _dpMap[cn] != null ? _dpMap[cn] : Number(it.price || 0);
+          _newSupply += dp * Number(it.qty || 0);
+        });
+      });
+      supplyPrice = Math.round(_newSupply);
     }
 
     const allDates = [];
