@@ -1060,16 +1060,16 @@
                 if (hotelIds.length === 0) return;
 
                 const [curRes, prevRes] = await Promise.all([
-                    window.mySupabase.from('invoices').select('total')
+                    window.mySupabase.from('invoices').select('total_amount')
                         .in('hotel_id', hotelIds)
                         .gte('date', curMonthStr + '-01').lte('date', todayStr),
-                    window.mySupabase.from('invoices').select('total')
+                    window.mySupabase.from('invoices').select('total_amount')
                         .in('hotel_id', hotelIds)
                         .gte('date', prevMonthStr + '-01').lte('date', prevEnd)
                 ]);
 
-                const curTotal = (curRes.data || []).reduce((s, r) => s + Number(r.total || 0), 0);
-                const prevTotal = (prevRes.data || []).reduce((s, r) => s + Number(r.total || 0), 0);
+                const curTotal = (curRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
+                const prevTotal = (prevRes.data || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
 
                 let g = 0;
                 if (prevTotal > 0) {
