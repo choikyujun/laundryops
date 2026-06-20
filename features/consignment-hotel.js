@@ -1032,4 +1032,22 @@
         window.openSendInvoiceModal();
     };
 
+    // ── fix: 대시보드 증감율 -0.0% 표시 버그 ─────────────────────────────────────
+    // growthRate가 소수 음수(예: -0.04%)일 때 toFixed(1) → "-0.0" 이 되어
+    // ▼ 0.0%(빨간) 또는 ▲ -0.0%(초록) 으로 혼란스럽게 표시됨.
+    // 원본 함수 실행 후 반올림 결과가 0.0%이면 중립(secondary) 표시로 교정.
+    const _origUpdateTrendChartOnly = window.updateTrendChartOnly;
+    if (_origUpdateTrendChartOnly) {
+        window.updateTrendChartOnly = async function () {
+            await _origUpdateTrendChartOnly.apply(this, arguments);
+            const el = document.getElementById('adminGrowthRate');
+            if (!el) return;
+            const span = el.querySelector('span');
+            if (!span) return;
+            if (/[▼▲]\s*-?0\.0%$/.test(span.textContent.trim())) {
+                el.innerHTML = '<span style="color:var(--secondary);">0.0%</span>';
+            }
+        };
+    }
+
 })();
