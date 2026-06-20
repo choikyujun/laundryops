@@ -1032,20 +1032,62 @@
         window.openSendInvoiceModal();
     };
 
-    // ── fix: 대시보드 증감율 -0.0% 표시 버그 ─────────────────────────────────────
-    // growthRate가 소수 음수(예: -0.04%)일 때 toFixed(1) → "-0.0" 이 되어
-    // ▼ 0.0%(빨간) 또는 ▲ -0.0%(초록) 으로 혼란스럽게 표시됨.
-    // 원본 함수 실행 후 반올림 결과가 0.0%이면 중립(secondary) 표시로 교정.
+    // ── fix: 대시보드 증감율 — 동기간 대비(이번달 1일~오늘 vs 전월 1일~전월 동일자) ─
+    // app_v38.js 원본: 이번달 누적 vs 전월 전체 비교 → 월 중반엔 항상 불리
+    // 수정: 전월 동일 기간과 비교해 진짜 증감율 표시
     const _origUpdateTrendChartOnly = window.updateTrendChartOnly;
     if (_origUpdateTrendChartOnly) {
         window.updateTrendChartOnly = async function () {
             await _origUpdateTrendChartOnly.apply(this, arguments);
             const el = document.getElementById('adminGrowthRate');
-            if (!el) return;
-            const span = el.querySelector('span');
-            if (!span) return;
-            if (/[▼▲]\s*-?0\.0%$/.test(span.textContent.trim())) {
-                el.innerHTML = '<span style="color:var(--secondary);">0.0%</span>';
+            if (!el || !currentFactoryId) return;
+
+            try {
+                const today = new Date();
+                const ty = today.getFullYear(), tm = today.getMonth() + 1, td = today.getDate();
+                const todayStr = `${ty}-${String(tm).padStart(2,'0')}-${String(td).padStart(2,'0')}`;
+                const curMonthStr = `${ty}-${String(tm).padStart(2,'0')}`;
+
+                const prevY = tm === 1 ? ty - 1 : ty;
+                const prevM = tm === 1 ? 12 : tm - 1;
+                const prevMonthStr = `${prevY}-${String(prevM).padStart(2,'0')}`;
+                const prevLastDay = new Date(ty, tm - 1, 0).getDate();
+                const prevEnd = `${prevMonthStr}-${String(Math.min(td, prevLastDay)).padStart(2,'0')}`;
+
+                const { data: factoryHotels } = await window.mySupabase
+                    .from('hotels').select('id').eq('factory_id', currentFactoryId);
+                const hotelIds = (factoryHotels || []).map(h => h.id);
+                if (hotelIds.length === 0) return;
+
+                const [curRes, prevRes] = await Promise.all([
+                    window.mySupabase.from('invoices').select('total')
+                        .in('hotel_id', hotelIds)
+                        .gte('date', curMonthStr + '-01').lte('date', todayStr),
+                    window.mySupabase.from('invoices').select('total')
+                        .in('hotel_id', hotelIds)
+                        .gte('date', prevMonthStr + '-01').lte('date', prevEnd)
+                ]);
+
+                const curTotal = (curRes.data || []).reduce((s, r) => s + Number(r.total || 0), 0);
+                const prevTotal = (prevRes.data || []).reduce((s, r) => s + Number(r.total || 0), 0);
+
+                let g = 0;
+                if (prevTotal > 0) {
+                    g = ((curTotal - prevTotal) / prevTotal) * 100;
+                } else if (curTotal > 0) {
+                    g = 100;
+                }
+
+                const absG = Math.abs(g);
+                if (absG < 0.05) {
+                    el.innerHTML = '<span style="color:var(--secondary);">0.0%</span>';
+                } else if (g > 0) {
+                    el.innerHTML = `<span style="color:var(--success);">&#9650; ${absG.toFixed(1)}%</span>`;
+                } else {
+                    el.innerHTML = `<span style="color:var(--danger);">&#9660; ${absG.toFixed(1)}%</span>`;
+                }
+            } catch (e) {
+                console.warn('[동기간 증감율 재계산 오류]', e);
             }
         };
     }
