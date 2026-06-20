@@ -6975,6 +6975,8 @@ window.viewInvoiceDetail = async function(id) {
     const rToday = Math.round(todayRev), rPrevDay = Math.round(prevDayRev);
     const rMonth = Math.round(monthRev), rPrevMonth = Math.round(prevMonthRev);
     const rYear = Math.round(yearRev), rPrevYear = Math.round(prevYearRev);
+    console.log('[dashDiag] todayStr:', todayStr, 'prevDayStr:', prevDayStr, 'todayData rows:', (todayData||[]).length, 'prevDayData rows:', (prevDayData||[]).length);
+    console.log('[dashDiag] todayRev:', todayRev, 'prevDayRev:', prevDayRev, ' → rToday:', rToday, 'rPrevDay:', rPrevDay);
 
     const el1 = document.getElementById('adminTodayRevenue');
     if(el1) el1.innerText = rToday.toLocaleString() + '원';
