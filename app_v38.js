@@ -6831,11 +6831,13 @@ window.viewInvoiceDetail = async function(id) {
         if (prev === 0 && cur > 0) return `<span style="color:var(--success);">&#9650; 100.0%</span>`;
         if (prev > 0) {
             const g = ((cur - prev) / prev) * 100;
+            const absG = Math.abs(g);
+            if (absG < 0.05) return `<span style="color:var(--secondary);">0.0%</span>`;
             return g >= 0
-                ? `<span style="color:var(--success);">&#9650; ${g.toFixed(1)}%</span>`
-                : `<span style="color:var(--danger);">&#9660; ${Math.abs(g).toFixed(1)}%</span>`;
+                ? `<span style="color:var(--success);">&#9650; ${absG.toFixed(1)}%</span>`
+                : `<span style="color:var(--danger);">&#9660; ${absG.toFixed(1)}%</span>`;
         }
-        return `<span style="color:var(--secondary);">- 0.0%</span>`;
+        return `<span style="color:var(--secondary);">0.0%</span>`;
     }
     function daysIn(yearNum, monthNum) {
         return new Date(yearNum, monthNum, 0).getDate();
