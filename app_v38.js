@@ -1042,14 +1042,44 @@ window.saveAndPrintInvoice = async function() {
         .eq('date', date)
         .maybeSingle();
 
+    // 새로 저장할 품목 행 (id 미리 생성, invoice_id는 확정 후 채움)
+    const itemRows = items.map(it => ({
+        id: crypto.randomUUID(),
+        invoice_id: null,
+        name: it.name,
+        price: it.price,
+        qty: it.qty,
+        unit: '개'
+    }));
+
     let invoiceId;
     if (existing) {
         invoiceId = existing.id;
+        itemRows.forEach(r => r.invoice_id = invoiceId);
+
+        // [재발방지] 기존 품목 백업 → 삭제 → 신규 삽입 → 실패 시 복구 (고아 헤더 방지)
+        const { data: backupRows } = await window.mySupabase
+            .from('invoice_items').select('id, invoice_id, name, price, qty, unit')
+            .eq('invoice_id', invoiceId);
+
+        const { error: delErr } = await window.mySupabase
+            .from('invoice_items').delete().eq('invoice_id', invoiceId);
+        if (delErr) { alert('저장 실패(기존 품목 정리): ' + delErr.message); return; }
+
+        const { error: itemErr } = await window.mySupabase.from('invoice_items').insert(itemRows);
+        if (itemErr) {
+            if (backupRows && backupRows.length) {
+                await window.mySupabase.from('invoice_items').insert(backupRows); // 원본 복구
+            }
+            alert('품목 저장 실패 — 기존 명세서를 복구했습니다.\n' + itemErr.message);
+            return;
+        }
+
+        // 품목 저장 성공 후에만 헤더 총액 갱신
         await window.mySupabase.from('invoices').update({
             total_amount: totalAmount,
             staff_name: currentStaffName || '현장직원'
         }).eq('id', invoiceId);
-        await window.mySupabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
     } else {
         // [추가] 신규 발행일 경우 요금제별 건수 제한 확인
         if (!await window.checkIssuanceLimit()) return;
@@ -1065,19 +1095,15 @@ window.saveAndPrintInvoice = async function() {
         }]).select('id').single();
         if (invErr) { alert('저장 실패: ' + invErr.message); return; }
         invoiceId = newInv.id;
-    }
+        itemRows.forEach(r => r.invoice_id = invoiceId);
 
-    // invoice_items insert
-    const itemRows = items.map(it => ({
-        id: crypto.randomUUID(),
-        invoice_id: invoiceId,
-        name: it.name,
-        price: it.price,
-        qty: it.qty,
-        unit: '개'
-    }));
-    const { error: itemErr } = await window.mySupabase.from('invoice_items').insert(itemRows);
-    if (itemErr) { alert('품목 저장 실패: ' + itemErr.message); return; }
+        const { error: itemErr } = await window.mySupabase.from('invoice_items').insert(itemRows);
+        if (itemErr) {
+            await window.mySupabase.from('invoices').delete().eq('id', invoiceId); // 고아 방지: 헤더 롤백
+            alert('품목 저장 실패 — 발행을 취소했습니다.\n' + itemErr.message);
+            return;
+        }
+    }
 
     const isEdit = !!existing;
     alert(isEdit ? '✏️ 수정 완료!' : '✅ 저장 완료!');
