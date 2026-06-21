@@ -7488,7 +7488,13 @@ window.sendInvoicesToClient = async function() {
                         price: it.price,
                         qty: it.qty
                     }));
-                    await window.mySupabase.from('invoice_items').insert(insertPayloads);
+                    const { error: itemErr } = await window.mySupabase.from('invoice_items').insert(insertPayloads);
+                    if(itemErr) {
+                        // 고아 방지: 품목 저장 실패 시 방금 만든 차감 헤더 롤백
+                        await window.mySupabase.from('invoices').delete().eq('id', invoiceId);
+                        console.error("차감 명세서 품목 저장 에러:", itemErr);
+                        throw new Error("차감 명세서 품목 저장 실패: " + itemErr.message);
+                    }
                 }
             }
             
