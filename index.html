@@ -549,7 +549,7 @@
     <div class="tabs" style="margin-bottom:10px;">
         <div class="tab-item active" onclick="switchTab(this, 'adminStats')"><svg class="icon" aria-hidden="true"><use href="#i-bar-chart-2"/></svg> 매출지표</div>
         <div class="tab-item" onclick="switchTab(this, 'adminAnalysis'); window.loadAnalysisTab && window.loadAnalysisTab();"><svg class="icon" aria-hidden="true"><use href="#i-trending-up"/></svg> 매출비교</div>
-        <div class="tab-item" id="tour-tab-hotel" onclick="switchTab(this, 'adminHotel')"><svg class="icon" aria-hidden="true"><use href="#i-handshake"/></svg> 거래처</div>
+        <div class="tab-item" id="tour-tab-hotel" onclick="switchTab(this, 'adminHotel'); window.renderDeliveryGroups && window.renderDeliveryGroups();"><svg class="icon" aria-hidden="true"><use href="#i-handshake"/></svg> 거래처</div>
         <div class="tab-item" id="tour-tab-staff" onclick="switchTab(this, 'adminStaff')"><svg class="icon" aria-hidden="true"><use href="#i-shirt"/></svg> 직원/발행</div>
         <div class="tab-item" onclick="switchTab(this, 'adminSent')"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg> 발송내역</div>
     </div>
@@ -693,6 +693,19 @@
                     <tbody id="adminHotelList"></tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- 배송 그룹 관리 -->
+        <div class="chart-container" style="margin-top:16px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                <h3 style="margin:0; font-size:15px;">👥 배송 그룹 관리</h3>
+                <span style="font-size:11px; color:#64748b;">그룹 생성 → 거래처 담기 → 배송기사 연결</span>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <input type="text" id="an-newgroup-name" placeholder="새 그룹 이름 (예: A코스)" style="padding:8px 11px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; flex:1; min-width:160px;">
+                <button class="btn btn-save" onclick="window.createDeliveryGroup()" style="padding:8px 14px; font-size:13px;">그룹 만들기</button>
+            </div>
+            <div id="deliveryGroupArea"></div>
         </div>
     </div>
 
@@ -1467,7 +1480,7 @@
   <script src="features/invoice-compare.js?v=20260606_01"></script>
   <script src="features/consignment-hotel.js?v=20260702_2"></script>
   <script src="features/invoice-view-ux.js?v=20260702_1"></script>
-  <script src="analysis/analysis.js?v=20260702_6"></script>
+  <script src="analysis/analysis.js?v=20260702_7"></script>
   <script src="features/staff-role.js?v=20260702_2"></script>
   <script>
   (function(){

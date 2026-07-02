@@ -211,19 +211,6 @@ window.loadAnalysisTab = async function () {
         <div id="dowDayDetail"></div>
       </div>
 
-      <!-- 배송 그룹 관리 -->
-      <div class="analysis-section">
-        <div class="analysis-section-title">
-          <h4>👥 배송 그룹 관리</h4>
-          <span style="font-size:11px; color:#64748b;">그룹 생성 → 거래처 담기 → 배송기사 연결</span>
-        </div>
-        <div class="analysis-ctrl">
-          <input type="text" id="an-newgroup-name" placeholder="새 그룹 이름 (예: A코스)" style="padding:7px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px;">
-          <button class="an-btn" onclick="window.createDeliveryGroup()">그룹 만들기</button>
-        </div>
-        <div id="deliveryGroupArea"></div>
-      </div>
-
       <!-- ④ 발송 리스트 -->
       <div class="analysis-section">
         <div class="analysis-section-title">
@@ -249,7 +236,6 @@ window.loadAnalysisTab = async function () {
 
 
     await window._loadChartJs();
-    window.renderDeliveryGroups();
 
   } catch (e) {
     console.error('Analysis tab error:', e);
