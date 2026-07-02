@@ -138,6 +138,23 @@ window.loadAnalysisTab = async function () {
         <div class="analysis-canvas-wrap"><canvas id="canvasDailyRevenue"></canvas></div>
       </div>
 
+      <!-- ③ 월별 연도 비교 -->
+      <div class="analysis-section">
+        <div class="analysis-section-title">
+          <h4>📈 월별 연도 비교</h4>
+          <span class="an-badge">연도별</span>
+          <span style="font-size:11px; color:#64748b;">※ 1~12월 매출을 연도끼리 나란히 비교합니다</span>
+        </div>
+        <div class="analysis-ctrl">
+          <select id="an-hotel-monthly">
+            <option value="">전체 거래처</option>
+            ${hotelOptions}
+          </select>
+          <button class="an-btn" onclick="window.renderMonthlyYearChart()">조회</button>
+        </div>
+        <div class="analysis-canvas-wrap"><canvas id="canvasMonthlyYear"></canvas></div>
+      </div>
+
       <!-- ② 요일별 품목 평균 수량 -->
       <div class="analysis-section">
         <div class="analysis-section-title">
@@ -476,4 +493,62 @@ window.renderDowChart = async function () {
       }
     }
   });
+};
+
+// ③ 월별 연도 비교 차트
+window.renderMonthlyYearChart = async function () {
+  try {
+    const sel = document.getElementById('an-hotel-monthly');
+    const hotelId = sel ? sel.value : '';            // '' = 전체 거래처
+    const factoryId = _getFactoryId();
+
+    let q = window.mySupabase
+      .from('invoices')
+      .select('hotel_id, date, total_amount')
+      .eq('factory_id', factoryId);
+    if (hotelId) q = q.eq('hotel_id', hotelId);
+
+    const { data: invoices, error } = await q;
+    if (error) return alert('조회 오류: ' + error.message);
+    if (!invoices || invoices.length === 0) { alert('해당 조건의 매출 데이터가 없습니다.'); return; }
+
+    // 연도 × 월(1~12) 집계
+    const byYear = {};
+    invoices.forEach(inv => {
+      if (!inv.date) return;
+      const y = String(inv.date).slice(0, 4);
+      const m = parseInt(String(inv.date).slice(5, 7), 10);   // 1~12
+      if (!(m >= 1 && m <= 12)) return;
+      byYear[y] = byYear[y] || {};
+      byYear[y][m] = (byYear[y][m] || 0) + Number(inv.total_amount || 0);
+    });
+
+    const years  = Object.keys(byYear).sort();                // 과거→최신
+    const labels = Array.from({ length: 12 }, (_, i) => (i + 1) + '월');
+    const datasets = years.map((yr, i) => ({
+      label: yr + '년',
+      data: labels.map((_, idx) => byYear[yr][idx + 1] || 0),
+      backgroundColor: PALETTE[i % PALETTE.length],
+      borderRadius: 4,
+    }));
+
+    await _loadChartJs();
+    _drawChart('canvasMonthlyYear', {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: c => c.dataset.label + ': ' + Number(c.parsed.y).toLocaleString() + '원' } },
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => (v >= 10000 ? (v / 10000) + '만' : v) } },
+        },
+      },
+    });
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
 };
