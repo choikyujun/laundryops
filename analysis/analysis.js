@@ -182,6 +182,7 @@ window.loadAnalysisTab = async function () {
       <div class="analysis-section">
         <div class="analysis-section-title">
           <h4>📅 요일별 품목 평균 수량</h4>
+          <span style="font-size:11px; color:#ef4444;">※ 그래프 하단 요일을 클릭하면 그날 품목별 수량이 표로 표시됩니다</span>
         </div>
         <div class="analysis-ctrl">
           <select id="an-hotel-dow">
@@ -196,7 +197,8 @@ window.loadAnalysisTab = async function () {
           <button class="an-btn" onclick="window.renderDowChart()">조회</button>
         </div>
         <div id="dowLegend" class="dow-legend"></div>
-        <div class="analysis-canvas-wrap"><canvas id="canvasDowAvg"></canvas></div>
+        <div class="analysis-canvas-wrap" style="cursor:pointer;"><canvas id="canvasDowAvg"></canvas></div>
+        <div id="dowDayDetail"></div>
       </div>
     `;
 
@@ -442,6 +444,8 @@ window.renderDailyChart = async function () {
 // ② 요일별 품목 평균 차트
 window.renderDowChart = async function () {
   const hId    = document.getElementById('an-hotel-dow').value;
+  const _dd = document.getElementById('dowDayDetail'); if (_dd) _dd.innerHTML = '';
+  window._dowDetail = null;
   const months = parseInt(document.getElementById('an-period-dow').value);
   if (!hId) return alert('거래처를 선택해주세요.');
 
@@ -478,6 +482,14 @@ window.renderDowChart = async function () {
   const dowOrder  = [1,2,3,4,5,6,0]; // 월~일
   const dowLabels = dowOrder.map(d => DOW[d]);
 
+  window._dowDetail = dowOrder.map((d) => ({
+    label: DOW[d] + '요일',
+    items: itemNames.map((name) => {
+      const { sum, count } = itemDow[name][d];
+      return { name, avg: count > 0 ? Math.round((sum / count) * 10) / 10 : 0 };
+    }).filter(x => x.avg > 0).sort((a, b) => b.avg - a.avg)
+  }));
+
   const datasets = itemNames.map((name, i) => ({
     label: name,
     data: dowOrder.map(d => {
@@ -503,6 +515,15 @@ window.renderDowChart = async function () {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onHover: (e, els, chart) => { chart.canvas.style.cursor = 'pointer'; },
+      onClick: (evt, els, chart) => {
+        let idx = (els && els.length) ? els[0].index : null;
+        if (idx == null) {
+          const v = chart.scales.x.getValueForPixel(evt.x);
+          if (v != null) { const r = Math.round(v); if (r >= 0 && r < 7) idx = r; }
+        }
+        if (idx != null) window._renderDowDayDetail(idx);
+      },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: 평균 ${ctx.parsed.y}개` } }
@@ -516,6 +537,46 @@ window.renderDowChart = async function () {
       }
     }
   });
+};
+
+// ② 요일 클릭 → 그날 품목별 평균 수량 표
+window._renderDowDayDetail = function (idx) {
+  const box = document.getElementById('dowDayDetail');
+  if (!box) return;
+  const day = window._dowDetail && window._dowDetail[idx];
+  if (!day) { box.innerHTML = ''; return; }
+  if (!day.items.length) {
+    box.innerHTML = `<div style="margin-top:12px; padding:12px; color:#94A3B8; font-size:13px;">${day.label}에는 발송 이력이 없습니다.</div>`;
+    return;
+  }
+  const total = Math.round(day.items.reduce((a, b) => a + b.avg, 0) * 10) / 10;
+  box.innerHTML = `
+    <div style="margin-top:14px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
+      <div style="background:#f0f9ff; color:#0369a1; font-weight:700; font-size:13px; padding:10px 14px; border-bottom:1px solid #bae6fd;">
+        ${day.label} 품목별 평균 수량 <span style="font-weight:500; color:#64748b;">(배송 준비 참고)</span>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="background:#f8fafc; color:#475569;">
+            <th style="text-align:left; padding:8px 14px; border-bottom:1px solid #e2e8f0;">품목</th>
+            <th style="text-align:right; padding:8px 14px; border-bottom:1px solid #e2e8f0;">평균 수량(개)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${day.items.map(it => `
+            <tr>
+              <td style="padding:8px 14px; border-bottom:1px solid #f1f5f9;">${it.name}</td>
+              <td style="padding:8px 14px; border-bottom:1px solid #f1f5f9; text-align:right; font-weight:600;">${it.avg}</td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8fafc; font-weight:700;">
+            <td style="padding:8px 14px;">합계</td>
+            <td style="padding:8px 14px; text-align:right;">${total}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
 };
 
 // ③ 월별 연도 비교 차트
