@@ -16,7 +16,7 @@
         const spLabel = document.getElementById('simp_price_label');
         const spInput = document.getElementById('simp_price');
         if (sdpg) sdpg.style.display = isC ? '' : 'none';
-        if (spLabel) spLabel.textContent = isC ? '우리 단가' : '단가';
+        if (spLabel) spLabel.textContent = isC ? '공장 단가' : '단가';
         if (spInput) spInput.style.width = isC ? '76px' : '100px';
 
         // priceSettingModal 입력 폼 (특수거래처)
@@ -24,7 +24,7 @@
         const hpLabel = document.getElementById('hp_price_label');
         const hpInput = document.getElementById('hp_price');
         if (hdpg) hdpg.style.display = isC ? '' : 'none';
-        if (hpLabel) hpLabel.textContent = isC ? '우리 단가' : '단가';
+        if (hpLabel) hpLabel.textContent = isC ? '공장 단가' : '단가';
         if (hpInput) hpInput.style.width = isC ? '76px' : '100px';
     }
 
@@ -102,7 +102,7 @@
         const thead = table.querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>`
+                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>공장 단가</th><th>위탁 단가</th><th>단위</th><th>관리</th>`
                 : `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>품목</th><th>단가</th><th>단위</th><th>관리</th>`;
         }
 
@@ -112,7 +112,7 @@
             _sdesc = document.createElement('div');
             _sdesc.id = 'cph-price-desc-simple';
             _sdesc.style.cssText = 'font-size:11px; color:#64748b; padding:2px 0 6px;';
-            _sdesc.textContent = '우리 단가 = 직영점 단가  ·  호텔 단가 = 위탁세탁 단가';
+            _sdesc.textContent = '공장 단가 = 직영점 단가  ·  위탁 단가 = 위탁세탁 단가';
             table.parentNode.insertBefore(_sdesc, table);
         }
         _sdesc.style.display = isC ? '' : 'none';
@@ -214,7 +214,7 @@
             const dp = (newValue === '' || newValue == null) ? null : (Number(newValue) || null);
             const { error } = await window.mySupabase
                 .from('hotel_item_prices').update({ display_price: dp }).eq('id', id);
-            if (error) alert('호텔 단가 수정 실패: ' + error.message);
+            if (error) alert('위탁 단가 수정 실패: ' + error.message);
             return;
         }
         return _origUpdateHotelItemPrice(id, newValue);
@@ -246,7 +246,7 @@
         const thead = table.querySelector('thead tr');
         if (thead) {
             thead.innerHTML = isC
-                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>우리 단가</th><th>호텔 단가</th><th>단위</th><th>관리</th>`
+                ? `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>공장 단가</th><th>위탁 단가</th><th>단위</th><th>관리</th>`
                 : `${_moveTh}<th style="width:28px; text-align:center;">순서</th><th>카테고리</th><th>품목명</th><th>단가</th><th>단위</th><th>관리</th>`;
         }
 
@@ -256,7 +256,7 @@
             _hdesc = document.createElement('div');
             _hdesc.id = 'cph-price-desc-hotel';
             _hdesc.style.cssText = 'font-size:11px; color:#64748b; padding:2px 0 6px;';
-            _hdesc.textContent = '우리 단가 = 직영점 단가  ·  호텔 단가 = 위탁세탁 단가';
+            _hdesc.textContent = '공장 단가 = 직영점 단가  ·  위탁 단가 = 위탁세탁 단가';
             table.parentNode.insertBefore(_hdesc, table);
         }
         _hdesc.style.display = isC ? '' : 'none';
@@ -487,7 +487,7 @@
         (inv.invoice_items || []).forEach(it => { savedItemsMap[it.name] = Number(it.qty || 0); });
 
         let { data: priceList } = await window.mySupabase.from('hotel_item_prices')
-            .select('name, price, unit, sort_order, category_name')
+            .select('name, price, display_price, unit, sort_order, category_name')
             .eq('hotel_id', inv.hotel_id)
             .eq('price_type', typeFilter)
             .order('sort_order', { ascending: true, nullsFirst: false });
@@ -507,17 +507,20 @@
             priceList.forEach(p => {
                 const base = Number(p.price || 0);
                 const price = (isConsignment && isHotelView && dpMap[p.name] != null) ? dpMap[p.name] : base;
-                mergedItems.push({ name: p.name, price, qty: savedItemsMap[p.name] || 0, category: p.category_name || '기타' });
+                const consignPrice = (p.display_price != null) ? Number(p.display_price) : null;
+                mergedItems.push({ name: p.name, price, qty: savedItemsMap[p.name] || 0, category: p.category_name || '기타', consignPrice });
             });
         } else {
             (inv.invoice_items || []).forEach(it => {
                 const base = Number(it.price || 0);
                 const price = (isConsignment && isHotelView && dpMap[it.name] != null) ? dpMap[it.name] : base;
-                mergedItems.push({ name: it.name, price, qty: Number(it.qty || 0), category: '기타' });
+                mergedItems.push({ name: it.name, price, qty: Number(it.qty || 0), category: '기타', consignPrice: null });
             });
         }
 
         const supplyPrice = mergedItems.reduce((s, it) => s + (it.price * it.qty), 0);
+        // [작업4] 대표(admin) 화면 전용 참고 열: 위탁단가(display_price). isHotelView(파트너)면 항상 false
+        const showConsign = isConsignment && !isHotelView && mergedItems.some(it => it.consignPrice != null);
         let reportHtml = '';
 
         if (isSpecial) {
@@ -537,6 +540,7 @@
                         <thead><tr style="background:#f8fafc;">
                             <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">품목</th>
                             <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">단가</th>
+                            ${showConsign ? '<th class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; background:#e5e7eb;">위탁단가</th>' : ''}
                             <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">수량</th>
                             <th style="padding:1px 2px;">금액</th>
                         </tr></thead>
@@ -544,6 +548,7 @@
                             ${grouped[cat].map(it => `<tr>
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px;">${it.name}</td>
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.price.toLocaleString()}</td>
+                                ${showConsign ? `<td class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center; background:#f1f5f9; color:#475569;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.qty}</td>
                                 <td style="padding:1px 2px; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
                             </tr>`).join('')}
@@ -552,7 +557,7 @@
                 </div>`;
             });
             reportHtml = `
-                <h1 style="text-align:center; border-bottom:2px solid #000; padding-bottom:5px; margin-bottom:5px; font-size:18px;">거래명세서 상세 (${inv.hotels ? inv.hotels.name : ''})</h1>
+                <h1 style="text-align:center; border-bottom:2px solid #000; padding-bottom:5px; margin-bottom:5px; font-size:18px;">거래명세서 상세 (${inv.hotels ? inv.hotels.name : ''})${isConsignment ? ' <span style="color:#dc2626; font-weight:700;">(위탁)</span>' : ''}</h1>
                 <div style="text-align:right; margin-bottom:5px; font-size:12px;">발행 일자: ${inv.date} | 담당자: ${inv.staff_name || ''}</div>
                 <div style="display:grid !important; grid-template-columns: repeat(2, 1fr) !important; gap:6px !important; align-items:start !important; padding:3px !important; width: 100% !important;">
                     ${categoriesHtml}
@@ -563,13 +568,14 @@
         } else {
             reportHtml = `
             <div id="report-to-print" style="padding:10px; font-family:'Malgun Gothic', sans-serif;">
-                <h1 style="text-align:center; color:#0f172a; border-bottom:3px solid #005b9f; padding-bottom:5px; margin-bottom:10px; font-size:18px;">세탁 명세서 (${inv.hotels ? inv.hotels.name : ''})</h1>
+                <h1 style="text-align:center; color:#0f172a; border-bottom:3px solid #005b9f; padding-bottom:5px; margin-bottom:10px; font-size:18px;">세탁 명세서 (${inv.hotels ? inv.hotels.name : ''})${isConsignment ? ' <span style="color:#dc2626; font-weight:700;">(위탁)</span>' : ''}</h1>
                 <div style="text-align:left; margin-bottom:5px; color:#0f172a; font-size:12px; font-weight:700;">발행일: ${inv.date} | 담당자: ${inv.staff_name || ''}</div>
                 <table style="width:100%; border-collapse:collapse; margin-top:5px; font-size:12px; border:1px solid #cbd5e1;">
                     <thead>
                         <tr style="background:#f1f5f9;">
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:left;">품목</th>
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">단가</th>
+                            ${showConsign ? '<th class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right;background:#e5e7eb;">위탁단가</th>' : ''}
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">수량</th>
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">금액</th>
                         </tr>
@@ -579,13 +585,14 @@
                         <tr>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:left;">${it.name || '알수없음'}</td>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.price.toLocaleString()}</td>
+                            ${showConsign ? `<td class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right;background:#f1f5f9;color:#475569;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.qty}</td>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
                         </tr>`).join('')}
                     </tbody>
                     <tfoot>
                         <tr style="font-weight:700; background:#e2e8f0;">
-                            <td colspan="3" style="padding:4px; border:1px solid #cbd5e1; text-align:right;">공급가</td>
+                            <td colspan="${showConsign ? 4 : 3}" style="padding:4px; border:1px solid #cbd5e1; text-align:right;">공급가</td>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${supplyPrice.toLocaleString()}</td>
                         </tr>
                     </tfoot>

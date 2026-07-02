@@ -1177,7 +1177,7 @@
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:14px;">
                         <input type="radio" name="h_consignment" value="true" style="width:15px;height:15px;accent-color:var(--primary);">
                         위탁
-                        <span style="font-size:11px; color:#64748b;">단가 설정에 우리 단가 / 호텔 단가 두 칸이 표시됩니다.</span>
+                        <span style="font-size:11px; color:#64748b;">단가 설정에 공장 단가 / 위탁 단가 두 칸이 표시됩니다.</span>
                     </label>
                 </div>
             </div>
@@ -1244,7 +1244,7 @@
               <input type="text" id="simp_name" placeholder="품목명">
             </div>
             <div class="form-group" style="margin:0;"><label id="simp_price_label">단가</label><input type="number" id="simp_price" value="0" style="width:100px;"></div>
-            <div id="simp_display_price_group" class="form-group" style="margin:0; display:none;"><label>호텔 단가</label><input type="number" id="simp_display_price" placeholder="미설정" style="width:76px;"></div>
+            <div id="simp_display_price_group" class="form-group" style="margin:0; display:none;"><label>위탁 단가</label><input type="number" id="simp_display_price" placeholder="미설정" style="width:76px;"></div>
             <div class="form-group" style="margin:0; flex:1;"><label>단위</label><input type="text" id="simp_unit" value="개"></div>
             <button class="btn btn-save" style="margin:0;" onclick="addSimpleItem()">추가</button>
         </div>
@@ -1275,7 +1275,7 @@
                 <div class="form-group" style="margin:0; flex:1;"><label>카테고리</label><select id="hp_cat" onchange="loadHotelPriceList()" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; width:100%;"></select></div>
                 <div class="form-group" style="margin:0; flex:2;"><label>품목명</label><input type="text" id="hp_name" placeholder="예: 특수세탁물"></div>
                 <div class="form-group" style="margin:0;"><label id="hp_price_label">단가</label><input type="number" id="hp_price" value="0" style="width:100px;"></div>
-                <div id="hp_display_price_group" class="form-group" style="margin:0; display:none;"><label>호텔 단가</label><input type="number" id="hp_display_price" placeholder="미설정" style="width:76px;"></div>
+                <div id="hp_display_price_group" class="form-group" style="margin:0; display:none;"><label>위탁 단가</label><input type="number" id="hp_display_price" placeholder="미설정" style="width:76px;"></div>
                 <div class="form-group" style="margin:0; flex:1;"><label>단위</label><input type="text" id="hp_unit" value="개"></div>
                 <button class="btn btn-save" style="margin:0;" onclick="addHotelCustomItem()">추가</button>
             </div>
@@ -1458,7 +1458,8 @@
   <script src="features/excel-redesign.js?v=20260620_1"></script>
   <script src="features/outbound-compare.js?v=20260606_02"></script>
   <script src="features/invoice-compare.js?v=20260606_01"></script>
-  <script src="features/consignment-hotel.js?v=20260620_6"></script>
+  <script src="features/consignment-hotel.js?v=20260702_1"></script>
+  <script src="features/invoice-view-ux.js?v=20260702_1"></script>
   <script src="analysis/analysis.js?v=20260509"></script>
   <script>
   (function(){
