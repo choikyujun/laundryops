@@ -521,6 +521,8 @@
         const supplyPrice = mergedItems.reduce((s, it) => s + (it.price * it.qty), 0);
         // [작업4] 대표(admin) 화면 전용 참고 열: 위탁단가(display_price). isHotelView(파트너)면 항상 false
         const showConsign = isConsignment && !isHotelView && mergedItems.some(it => it.consignPrice != null);
+        const grayBg = !isHotelView ? ' background:#f1f5f9;' : '';
+        // 대표 화면에서만 단가·금액 열 회색. 파트너 화면은 빈 문자열 → 음영 없음.
         let reportHtml = '';
 
         if (isSpecial) {
@@ -539,18 +541,18 @@
                     <table style="width:100%; font-size:9px; border-collapse:collapse;">
                         <thead><tr style="background:#f8fafc;">
                             <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">품목</th>
-                            <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">단가</th>
-                            ${showConsign ? '<th class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; background:#e5e7eb;">위탁단가</th>' : ''}
+                            <th style="border-right:1px solid #cbd5e1; padding:1px 2px; width:16%;${grayBg}">단가</th>
+                            ${showConsign ? '<th class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; width:16%;">위탁단가</th>' : ''}
                             <th style="border-right:1px solid #cbd5e1; padding:1px 2px;">수량</th>
-                            <th style="padding:1px 2px;">금액</th>
+                            <th style="padding:1px 2px;${grayBg}">금액</th>
                         </tr></thead>
                         <tbody>
                             ${grouped[cat].map(it => `<tr>
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px;">${it.name}</td>
-                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.price.toLocaleString()}</td>
-                                ${showConsign ? `<td class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center; background:#f1f5f9; color:#475569;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
+                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center; width:16%;${grayBg}">${it.price.toLocaleString()}</td>
+                                ${showConsign ? `<td class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.qty}</td>
-                                <td style="padding:1px 2px; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                                <td style="padding:1px 2px; text-align:right;${grayBg}">₩ ${(it.price * it.qty).toLocaleString()}</td>
                             </tr>`).join('')}
                         </tbody>
                     </table>
@@ -574,20 +576,20 @@
                     <thead>
                         <tr style="background:#f1f5f9;">
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:left;">품목</th>
-                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">단가</th>
-                            ${showConsign ? '<th class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right;background:#e5e7eb;">위탁단가</th>' : ''}
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right; width:15%;${grayBg}">단가</th>
+                            ${showConsign ? '<th class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right; width:15%;">위탁단가</th>' : ''}
                             <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">수량</th>
-                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;">금액</th>
+                            <th style="padding:4px; border:1px solid #cbd5e1; text-align:right;${grayBg}">금액</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${mergedItems.map(it => `
                         <tr>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:left;">${it.name || '알수없음'}</td>
-                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.price.toLocaleString()}</td>
-                            ${showConsign ? `<td class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right;background:#f1f5f9;color:#475569;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right; width:15%;${grayBg}">${it.price.toLocaleString()}</td>
+                            ${showConsign ? `<td class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right; width:15%;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.qty}</td>
-                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;${grayBg}">₩ ${(it.price * it.qty).toLocaleString()}</td>
                         </tr>`).join('')}
                     </tbody>
                     <tfoot>
