@@ -510,6 +510,23 @@ window.renderDowChart = async function () {
   });
 
   const itemNames = Object.keys(itemDow);
+
+  // 거래명세서(단가표) 품목 순서 = hotel_item_prices.sort_order 기준 (앱 공통 정렬과 동일)
+  const { data: _priceOrder } = await window.mySupabase.from('hotel_item_prices')
+    .select('name')
+    .eq('hotel_id', hId)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  const _orderIdx = {};
+  (_priceOrder || []).forEach((p, i) => { if (_orderIdx[p.name] === undefined) _orderIdx[p.name] = i; });
+  const _itemBySpecOrder = (a, b) => {
+    const ia = _orderIdx[a.name], ib = _orderIdx[b.name];
+    if (ia === undefined && ib === undefined) return a.name.localeCompare(b.name, 'ko');
+    if (ia === undefined) return 1;   // 단가표에 없는 품목은 뒤로
+    if (ib === undefined) return -1;
+    return ia - ib;
+  };
+
   const dowOrder  = [1,2,3,4,5,6,0]; // 월~일
   const dowLabels = dowOrder.map(d => DOW[d]);
 
@@ -518,7 +535,7 @@ window.renderDowChart = async function () {
     items: itemNames.map((name) => {
       const { sum, count } = itemDow[name][d];
       return { name, avg: count > 0 ? Math.round((sum / count) * 10) / 10 : 0 };
-    }).filter(x => x.avg > 0).sort((a, b) => b.avg - a.avg)
+    }).filter(x => x.avg > 0).sort(_itemBySpecOrder)
   }));
 
   const datasets = itemNames.map((name, i) => ({
