@@ -28,7 +28,7 @@ window.loadAnalysisTab = async function () {
     // 호텔 목록 조회
     const { data: hotels, error: hErr } = await window.mySupabase
       .from('hotels')
-      .select('id, name, group_name, is_consignment')
+      .select('id, name, group_id, is_consignment')
       .eq('factory_id', factoryId)
       .or('status.is.null,status.neq.inactive')   // 거래종료(inactive) 제외, 미설정(null)은 운영중 취급
       .order('name');
@@ -74,10 +74,11 @@ window.loadAnalysisTab = async function () {
     const _dowKrDisp = ['일','월','화','수','목','금','토'];
     const _todayDow = today.getDay();
     const dispatchDowOptions = [1,2,3,4,5,6,0].map(d => `<option value="${d}"${d===_todayDow?' selected':''}>${_dowKrDisp[d]}요일</option>`).join('');
-    const _groupNames = [...new Set(hotels.map(h => h.group_name).filter(Boolean))].sort();
+    const { data: _groups } = await window.mySupabase
+      .from('delivery_groups').select('id, name').eq('factory_id', factoryId).order('name');
     const dispatchTargetOptions =
       '<optgroup label="거래처">' + hotels.map(h => `<option value="hotel:${h.id}">${h.name}</option>`).join('') + '</optgroup>' +
-      (_groupNames.length ? '<optgroup label="그룹">' + _groupNames.map(g => `<option value="group:${g.replace(/"/g,'&quot;')}">${g} (그룹)</option>`).join('') + '</optgroup>' : '');
+      ((_groups && _groups.length) ? '<optgroup label="그룹">' + _groups.map(g => `<option value="group:${g.id}">${g.name} (그룹)</option>`).join('') + '</optgroup>' : '');
 
     root.innerHTML = `
       <style>
@@ -210,6 +211,19 @@ window.loadAnalysisTab = async function () {
         <div id="dowDayDetail"></div>
       </div>
 
+      <!-- 배송 그룹 관리 -->
+      <div class="analysis-section">
+        <div class="analysis-section-title">
+          <h4>👥 배송 그룹 관리</h4>
+          <span style="font-size:11px; color:#64748b;">그룹 생성 → 거래처 담기 → 배송기사 연결</span>
+        </div>
+        <div class="analysis-ctrl">
+          <input type="text" id="an-newgroup-name" placeholder="새 그룹 이름 (예: A코스)" style="padding:7px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px;">
+          <button class="an-btn" onclick="window.createDeliveryGroup()">그룹 만들기</button>
+        </div>
+        <div id="deliveryGroupArea"></div>
+      </div>
+
       <!-- ④ 발송 리스트 -->
       <div class="analysis-section">
         <div class="analysis-section-title">
@@ -235,6 +249,7 @@ window.loadAnalysisTab = async function () {
 
 
     await window._loadChartJs();
+    window.renderDeliveryGroups();
 
   } catch (e) {
     console.error('Analysis tab error:', e);
@@ -579,10 +594,16 @@ window.renderDispatchList = async function () {
   const months = parseInt(document.getElementById('an-dispatch-period').value, 10);
   const factoryId = _getFactoryId();
 
-  const all = window._analysisHotels || [];
   let hotels;
-  if (target.startsWith('group:')) { const g = target.slice(6); hotels = all.filter(h => (h.group_name || '') === g); }
-  else { const id = target.slice(6); hotels = all.filter(h => h.id === id); }
+  if (target.startsWith('group:')) {
+    const gid = target.slice(6);
+    const { data } = await window.mySupabase.from('hotels').select('id, name, is_consignment').eq('factory_id', factoryId).eq('group_id', gid).order('name');
+    hotels = data || [];
+  } else {
+    const hid = target.slice(6);
+    const { data } = await window.mySupabase.from('hotels').select('id, name, is_consignment').eq('id', hid).maybeSingle();
+    hotels = data ? [data] : [];
+  }
   if (!hotels.length) { area.innerHTML = '<div style="color:#94A3B8; padding:20px; font-size:13px;">대상 거래처가 없습니다.</div>'; return; }
 
   const startDate = new Date(new Date().getFullYear(), new Date().getMonth() - months, 1).toISOString().slice(0, 10);
@@ -641,6 +662,105 @@ window.printDispatchList = function () {
   if (!w) return alert('팝업 차단을 해제해주세요.');
   w.document.write(`<html><head><title>발송 명세</title><style>body{font-family:'Malgun Gothic',sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;margin-top:6px;}th,td{border:1px solid #ccc;padding:7px;text-align:center;}</style></head><body onload="window.print();window.close();">${body}</body></html>`);
   w.document.close();
+};
+
+// ===== 배송 그룹 관리 =====
+window.renderDeliveryGroups = async function () {
+  const area = document.getElementById('deliveryGroupArea');
+  if (!area) return;
+  const factoryId = _getFactoryId();
+  area.innerHTML = '<div style="color:#94A3B8; font-size:13px; padding:8px 0;">불러오는 중...</div>';
+  try {
+    const [{ data: groups }, { data: drivers }, { data: hotels }] = await Promise.all([
+      window.mySupabase.from('delivery_groups').select('id, name, driver_staff_id').eq('factory_id', factoryId).order('name'),
+      window.mySupabase.from('staff').select('id, name').eq('factory_id', factoryId).eq('role', 'driver').order('name'),
+      window.mySupabase.from('hotels').select('id, name, group_id').eq('factory_id', factoryId).or('status.is.null,status.neq.inactive').order('name'),
+    ]);
+    const gs = groups || [], drs = drivers || [], hs = hotels || [];
+
+    const tgtSel = document.getElementById('an-dispatch-target');
+    if (tgtSel) {
+      const cur = tgtSel.value;
+      tgtSel.innerHTML = '<option value="">거래처 / 그룹 선택</option>' +
+        '<optgroup label="거래처">' + hs.map(h => `<option value="hotel:${h.id}">${h.name}</option>`).join('') + '</optgroup>' +
+        (gs.length ? '<optgroup label="그룹">' + gs.map(g => `<option value="group:${g.id}">${g.name} (그룹)</option>`).join('') + '</optgroup>' : '');
+      tgtSel.value = cur;
+    }
+
+    if (!gs.length) { area.innerHTML = '<div style="color:#94A3B8; font-size:13px; padding:8px 0;">아직 그룹이 없습니다. 위에서 새 그룹을 만들어 주세요.</div>'; return; }
+
+    area.innerHTML = gs.map(g => {
+      const members = hs.filter(h => h.group_id === g.id);
+      const unassigned = hs.filter(h => !h.group_id);
+      const driverOpts = '<option value="">배송기사 미지정</option>' + drs.map(d => `<option value="${d.id}"${d.id === g.driver_staff_id ? ' selected' : ''}>${d.name}</option>`).join('');
+      const addOpts = unassigned.length ? '<option value="">+ 거래처 추가</option>' + unassigned.map(h => `<option value="${h.id}">${h.name}</option>`).join('') : '<option value="">추가할 거래처 없음</option>';
+      return `<div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+          <div style="font-weight:700; font-size:14px;">${g.name}</div>
+          <div style="display:flex; gap:6px;">
+            <button class="an-btn-sm" onclick="window.renameDeliveryGroup('${g.id}')">이름수정</button>
+            <button class="an-btn-sm" style="color:#dc2626;" onclick="window.deleteDeliveryGroup('${g.id}')">삭제</button>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+          <span style="font-size:12px; color:#64748b;">배송기사</span>
+          <select onchange="window.assignGroupDriver('${g.id}', this.value)" style="padding:5px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px;">${driverOpts}</select>
+        </div>
+        <div style="font-size:12px; color:#64748b; margin-bottom:4px;">거래처 ${members.length}곳</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+          ${members.length ? members.map(h => `<span style="display:inline-flex; align-items:center; gap:5px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:20px; padding:3px 6px 3px 10px; font-size:12px;">${h.name}<button onclick="window.removeHotelFromGroup('${h.id}')" style="border:none; background:none; cursor:pointer; color:#94A3B8; font-size:14px; line-height:1;">×</button></span>`).join('') : '<span style="font-size:12px; color:#94A3B8;">담긴 거래처 없음</span>'}
+        </div>
+        <select onchange="if(this.value) window.addHotelToGroup('${g.id}', this.value)" style="padding:5px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px;">${addOpts}</select>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    area.innerHTML = `<div style="color:#ef4444; font-size:13px; padding:8px 0;">오류: ${e.message}</div>`;
+  }
+};
+
+window.createDeliveryGroup = async function () {
+  const el = document.getElementById('an-newgroup-name');
+  const name = (el.value || '').trim();
+  if (!name) return alert('그룹 이름을 입력해주세요.');
+  const { error } = await window.mySupabase.from('delivery_groups').insert([{ id: 'grp_' + Date.now(), factory_id: _getFactoryId(), name }]);
+  if (error) return alert('그룹 생성 실패: ' + error.message);
+  el.value = '';
+  window.renderDeliveryGroups();
+};
+
+window.renameDeliveryGroup = async function (id) {
+  const name = prompt('새 그룹 이름을 입력하세요.');
+  if (name === null) return;
+  const nm = name.trim();
+  if (!nm) return alert('이름을 입력해주세요.');
+  const { error } = await window.mySupabase.from('delivery_groups').update({ name: nm }).eq('id', id);
+  if (error) return alert('이름 수정 실패: ' + error.message);
+  window.renderDeliveryGroups();
+};
+
+window.deleteDeliveryGroup = async function (id) {
+  if (!confirm('이 그룹을 삭제할까요? 담긴 거래처의 그룹 연결은 해제됩니다.')) return;
+  const { error } = await window.mySupabase.from('delivery_groups').delete().eq('id', id);
+  if (error) return alert('그룹 삭제 실패: ' + error.message);
+  window.renderDeliveryGroups();
+};
+
+window.assignGroupDriver = async function (id, staffId) {
+  const { error } = await window.mySupabase.from('delivery_groups').update({ driver_staff_id: staffId || null }).eq('id', id);
+  if (error) return alert('배송기사 연결 실패: ' + error.message);
+  window.renderDeliveryGroups();
+};
+
+window.addHotelToGroup = async function (groupId, hotelId) {
+  const { error } = await window.mySupabase.from('hotels').update({ group_id: groupId }).eq('id', hotelId);
+  if (error) return alert('거래처 추가 실패: ' + error.message);
+  window.renderDeliveryGroups();
+};
+
+window.removeHotelFromGroup = async function (hotelId) {
+  const { error } = await window.mySupabase.from('hotels').update({ group_id: null }).eq('id', hotelId);
+  if (error) return alert('거래처 제외 실패: ' + error.message);
+  window.renderDeliveryGroups();
 };
 
 // ② 요일 클릭 → 그날 품목별 평균 수량 표
