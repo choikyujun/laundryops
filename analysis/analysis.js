@@ -28,7 +28,7 @@ window.loadAnalysisTab = async function () {
     // 호텔 목록 조회
     const { data: hotels, error: hErr } = await window.mySupabase
       .from('hotels')
-      .select('id, name')
+      .select('id, name, group_name, is_consignment')
       .eq('factory_id', factoryId)
       .or('status.is.null,status.neq.inactive')   // 거래종료(inactive) 제외, 미설정(null)은 운영중 취급
       .order('name');
@@ -69,6 +69,15 @@ window.loadAnalysisTab = async function () {
     const hotelCheckboxes = hotels.map((h, i) =>
       `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
     ).join('');
+
+    window._analysisHotels = hotels;
+    const _dowKrDisp = ['일','월','화','수','목','금','토'];
+    const _todayDow = today.getDay();
+    const dispatchDowOptions = [1,2,3,4,5,6,0].map(d => `<option value="${d}"${d===_todayDow?' selected':''}>${_dowKrDisp[d]}요일</option>`).join('');
+    const _groupNames = [...new Set(hotels.map(h => h.group_name).filter(Boolean))].sort();
+    const dispatchTargetOptions =
+      '<optgroup label="거래처">' + hotels.map(h => `<option value="hotel:${h.id}">${h.name}</option>`).join('') + '</optgroup>' +
+      (_groupNames.length ? '<optgroup label="그룹">' + _groupNames.map(g => `<option value="group:${g.replace(/"/g,'&quot;')}">${g} (그룹)</option>`).join('') + '</optgroup>' : '');
 
     root.innerHTML = `
       <style>
@@ -199,6 +208,27 @@ window.loadAnalysisTab = async function () {
         <div id="dowLegend" class="dow-legend"></div>
         <div class="analysis-canvas-wrap" style="cursor:pointer;"><canvas id="canvasDowAvg"></canvas></div>
         <div id="dowDayDetail"></div>
+      </div>
+
+      <!-- ④ 발송 리스트 -->
+      <div class="analysis-section">
+        <div class="analysis-section-title">
+          <h4>🚚 발송 리스트</h4>
+          <span class="an-badge">요일 기준</span>
+          <span style="font-size:11px; color:#64748b;">거래처/그룹 선택 → 요일별 평균(반올림) 발송 수량 · 거래처별 표시</span>
+        </div>
+        <div class="analysis-ctrl">
+          <select id="an-dispatch-target"><option value="">거래처 / 그룹 선택</option>${dispatchTargetOptions}</select>
+          <select id="an-dispatch-dow">${dispatchDowOptions}</select>
+          <select id="an-dispatch-period">
+            <option value="3">최근 3개월</option>
+            <option value="6">최근 6개월</option>
+            <option value="12">최근 12개월</option>
+          </select>
+          <button class="an-btn" onclick="window.renderDispatchList()">조회</button>
+          <button class="an-btn-sm" onclick="window.printDispatchList()">인쇄</button>
+        </div>
+        <div id="dispatchListArea"></div>
       </div>
     `;
 
@@ -537,6 +567,80 @@ window.renderDowChart = async function () {
       }
     }
   });
+};
+
+// ④ 발송 리스트 — 요일별 평균 발송 수량 (거래처별 표)
+window.renderDispatchList = async function () {
+  const area = document.getElementById('dispatchListArea');
+  if (!area) return;
+  const target = document.getElementById('an-dispatch-target').value;
+  if (!target) return alert('거래처 또는 그룹을 선택해주세요.');
+  const dow = parseInt(document.getElementById('an-dispatch-dow').value, 10);
+  const months = parseInt(document.getElementById('an-dispatch-period').value, 10);
+  const factoryId = _getFactoryId();
+
+  const all = window._analysisHotels || [];
+  let hotels;
+  if (target.startsWith('group:')) { const g = target.slice(6); hotels = all.filter(h => (h.group_name || '') === g); }
+  else { const id = target.slice(6); hotels = all.filter(h => h.id === id); }
+  if (!hotels.length) { area.innerHTML = '<div style="color:#94A3B8; padding:20px; font-size:13px;">대상 거래처가 없습니다.</div>'; return; }
+
+  const startDate = new Date(new Date().getFullYear(), new Date().getMonth() - months, 1).toISOString().slice(0, 10);
+  const ids = hotels.map(h => h.id);
+  const { data: invoices, error } = await window.mySupabase
+    .from('invoices')
+    .select('hotel_id, date, invoice_items(name, qty)')
+    .eq('factory_id', factoryId)
+    .in('hotel_id', ids)
+    .gte('date', startDate);
+  if (error) { area.innerHTML = `<div style="color:#ef4444; padding:20px;">조회 오류: ${error.message}</div>`; return; }
+
+  const DOWK = ['일','월','화','수','목','금','토'];
+  area.innerHTML = `<div style="font-size:12px; color:#64748b; margin:6px 0 12px;">${DOWK[dow]}요일 기준 · 최근 ${months}개월 평균(반올림) · 거래처 ${hotels.length}곳</div>` +
+    hotels.map(h => {
+      const invs = (invoices || []).filter(inv => inv.hotel_id === h.id && new Date(inv.date).getDay() === dow);
+      const agg = {};
+      invs.forEach(inv => (inv.invoice_items || []).forEach(it => {
+        if (!it.name) return;
+        if (!agg[it.name]) agg[it.name] = { sum: 0, count: 0 };
+        agg[it.name].sum += Number(it.qty || 0);
+        agg[it.name].count += 1;
+      }));
+      const rows = Object.keys(agg).map(name => ({ name, qty: Math.round(agg[name].sum / agg[name].count) }))
+        .filter(r => r.qty > 0).sort((a, b) => b.qty - a.qty);
+      const tag = h.is_consignment ? ' <span style="font-size:11px;color:#dc2626;font-weight:700;">(위탁)</span>' : '';
+      const head = `<div style="font-weight:700;font-size:14px;margin-bottom:8px;">${h.name}${tag}</div>`;
+      if (!rows.length) {
+        return `<div class="dispatch-hotel-block" data-hotel-name="${h.name.replace(/"/g,'&quot;')}" style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:12px;">${head}<div style="color:#94A3B8;font-size:13px;">${DOWK[dow]}요일 발송 이력이 없습니다.</div></div>`;
+      }
+      return `<div class="dispatch-hotel-block" data-hotel-name="${h.name.replace(/"/g,'&quot;')}" style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:12px;">${head}
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="color:#94A3B8;font-size:11px;"><th style="text-align:left;padding-bottom:6px;">품목</th><th style="text-align:right;padding-bottom:6px;width:110px;">발송수량</th></tr></thead>
+          <tbody>${rows.map(r => `<tr data-item="${r.name.replace(/"/g,'&quot;')}"><td style="padding:5px 0;border-top:0.5px solid #eef2f7;">${r.name}</td><td style="padding:5px 0;border-top:0.5px solid #eef2f7;text-align:right;"><input type="number" class="dispatch-qty" value="${r.qty}" style="width:80px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-size:13px;"></td></tr>`).join('')}</tbody>
+        </table></div>`;
+    }).join('');
+};
+
+window.printDispatchList = function () {
+  const blocks = Array.from(document.querySelectorAll('#dispatchListArea .dispatch-hotel-block'));
+  if (!blocks.length) return alert('먼저 조회해주세요.');
+  const t = new Date();
+  const DOWK = ['일','월','화','수','목','금','토'];
+  const dateStr = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} (${DOWK[t.getDay()]})`;
+  let body = `<h2 style="text-align:center;">세탁물 발송 명세</h2><div style="text-align:center;color:#555;margin-bottom:16px;">${dateStr} · CEGO 세탁고수</div>`;
+  blocks.forEach((b, i) => {
+    const name = b.dataset.hotelName || '';
+    const rows = Array.from(b.querySelectorAll('tr[data-item]')).map(tr => ({ item: tr.dataset.item, qty: (tr.querySelector('.dispatch-qty') || {}).value || '0' }));
+    body += `<div style="margin-bottom:18px;"><div style="font-weight:700;font-size:15px;margin-bottom:4px;">${i+1}. ${name}</div>`;
+    if (!rows.length) { body += `<div style="color:#777;font-size:13px;">발송 이력 없음</div></div>`; return; }
+    body += `<table><thead><tr><th style="text-align:left;">품목</th><th>수량</th><th>확인</th></tr></thead><tbody>`;
+    rows.forEach(r => { body += `<tr><td style="text-align:left;">${r.item}</td><td>${r.qty}</td><td>☐</td></tr>`; });
+    body += `</tbody></table><div style="margin-top:8px;font-size:13px;color:#555;">인수자 서명 _______________</div></div>`;
+  });
+  const w = window.open('', '_blank', 'width=800,height=600');
+  if (!w) return alert('팝업 차단을 해제해주세요.');
+  w.document.write(`<html><head><title>발송 명세</title><style>body{font-family:'Malgun Gothic',sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;margin-top:6px;}th,td{border:1px solid #ccc;padding:7px;text-align:center;}</style></head><body onload="window.print();window.close();">${body}</body></html>`);
+  w.document.close();
 };
 
 // ② 요일 클릭 → 그날 품목별 평균 수량 표
