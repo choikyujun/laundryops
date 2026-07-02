@@ -30,6 +30,7 @@ window.loadAnalysisTab = async function () {
       .from('hotels')
       .select('id, name')
       .eq('factory_id', factoryId)
+      .or('status.is.null,status.neq.inactive')   // 거래종료(inactive) 제외, 미설정(null)은 운영중 취급
       .order('name');
 
     if (hErr) throw new Error(hErr.message);
