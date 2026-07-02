@@ -81,7 +81,7 @@
         const mid = isDriver
           ? `<span style="font-size:13px;">${s.phone || '-'}</span>`
           : `<span style="font-size:13px;">${s.login_id || '-'}<br><small style="color:var(--secondary)">PW: ****</small></span>`;
-        return `<tr><td><strong>${s.name}</strong><br>${badge}</td><td>${mid}</td><td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteStaff('${s.id}')">삭제</button></td></tr>`;
+        return `<tr><td><span style="display:inline-flex; align-items:center; gap:8px;"><strong>${s.name}</strong>${badge}</span></td><td>${mid}</td><td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteStaff('${s.id}')">삭제</button></td></tr>`;
       }).join('');
     } catch (e) { console.warn('[staff-role] 목록 보강 실패', e); }
   };
