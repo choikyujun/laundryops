@@ -851,6 +851,23 @@
         </div>
         <div id="staffInvoicePaging" style="display:flex; justify-content:center; align-items:center; gap:6px; margin-top:14px; flex-wrap:wrap;"></div>
     </div>
+
+    <!-- 발송 리스트 (요일 기준 · 대표 화면과 동일, 인쇄 제외) -->
+    <div class="chart-container" style="margin-top:14px;">
+        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">🚚 발송 리스트</div>
+        <div style="font-size:12px; color:var(--secondary); margin-bottom:12px;">거래처/그룹 선택 → 요일별 평균(반올림) 발송 수량 · 거래처별 표시</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+            <select id="st-dispatch-target" style="padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px; flex:1; min-width:150px;"><option value="">거래처 / 그룹 선택</option></select>
+            <select id="st-dispatch-dow" style="padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px;"></select>
+            <select id="st-dispatch-period" style="padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px;">
+                <option value="3">최근 3개월</option>
+                <option value="6">최근 6개월</option>
+                <option value="12">최근 12개월</option>
+            </select>
+            <button class="btn btn-save" onclick="window.renderDispatchList('st-dispatch','staffDispatchListArea')" style="padding:9px 16px; font-size:14px;">조회</button>
+        </div>
+        <div id="staffDispatchListArea"></div>
+    </div>
   </div>
 
   <!-- [4] 호텔 파트너 화면 -->
@@ -1480,8 +1497,9 @@
   <script src="features/invoice-compare.js?v=20260606_01"></script>
   <script src="features/consignment-hotel.js?v=20260702_2"></script>
   <script src="features/invoice-view-ux.js?v=20260702_1"></script>
-  <script src="analysis/analysis.js?v=20260702_9"></script>
+  <script src="analysis/analysis.js?v=20260702_10"></script>
   <script src="features/staff-role.js?v=20260702_2"></script>
+  <script src="features/staff-dispatch.js?v=20260702_1"></script>
   <script>
   (function(){
     function _syncHotelBoxes(){

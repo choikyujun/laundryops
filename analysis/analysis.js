@@ -552,13 +552,15 @@ window.renderDowChart = async function () {
 };
 
 // ④ 발송 리스트 — 요일별 평균 발송 수량 (거래처별 표)
-window.renderDispatchList = async function () {
-  const area = document.getElementById('dispatchListArea');
+window.renderDispatchList = async function (prefix, areaId) {
+  prefix = prefix || 'an-dispatch';
+  areaId = areaId || 'dispatchListArea';
+  const area = document.getElementById(areaId);
   if (!area) return;
-  const target = document.getElementById('an-dispatch-target').value;
+  const target = document.getElementById(prefix + '-target').value;
   if (!target) return alert('거래처 또는 그룹을 선택해주세요.');
-  const dow = parseInt(document.getElementById('an-dispatch-dow').value, 10);
-  const months = parseInt(document.getElementById('an-dispatch-period').value, 10);
+  const dow = parseInt(document.getElementById(prefix + '-dow').value, 10);
+  const months = parseInt(document.getElementById(prefix + '-period').value, 10);
   const factoryId = _getFactoryId();
 
   let hotels;
