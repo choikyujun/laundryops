@@ -46,6 +46,24 @@ window.loadAnalysisTab = async function () {
       `<option value="${h.id}">${h.name}</option>`
     ).join('');
 
+    // 연도 드롭다운(③ 월별 연도 비교): 최초 매출 연도 ~ 올해, 디폴트=올해
+    const curYear = today.getFullYear();
+    let startYear = curYear;
+    const { data: firstInv } = await window.mySupabase
+      .from('invoices')
+      .select('date')
+      .eq('factory_id', factoryId)
+      .order('date', { ascending: true })
+      .limit(1);
+    if (firstInv && firstInv[0] && firstInv[0].date) {
+      const fy = parseInt(String(firstInv[0].date).slice(0, 4), 10);
+      if (fy >= 2000 && fy <= curYear) startYear = fy;
+    }
+    let yearOptions = '';
+    for (let yy = curYear; yy >= startYear; yy--) {
+      yearOptions += `<option value="${yy}"${yy === curYear ? ' selected' : ''}>${yy}년</option>`;
+    }
+
     // 거래처 체크박스 버튼 생성 (onclick 인라인)
     const hotelCheckboxes = hotels.map((h, i) =>
       `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
@@ -143,9 +161,13 @@ window.loadAnalysisTab = async function () {
         <div class="analysis-section-title">
           <h4>📈 월별 연도 비교</h4>
           <span class="an-badge">연도별</span>
-          <span style="font-size:11px; color:#64748b;">※ 1~12월 매출을 연도끼리 나란히 비교합니다</span>
+          <span style="font-size:11px; color:#64748b;">※ 연도를 선택하거나 '전체 연도'로 여러 해를 나란히 비교합니다</span>
         </div>
         <div class="analysis-ctrl">
+          <select id="an-year-monthly">
+            <option value="">전체 연도</option>
+            ${yearOptions}
+          </select>
           <select id="an-hotel-monthly">
             <option value="">전체 거래처</option>
             ${hotelOptions}
@@ -500,6 +522,8 @@ window.renderMonthlyYearChart = async function () {
   try {
     const sel = document.getElementById('an-hotel-monthly');
     const hotelId = sel ? sel.value : '';            // '' = 전체 거래처
+    const selY = document.getElementById('an-year-monthly');
+    const year = selY ? selY.value : '';             // '' = 전체 연도
     const factoryId = _getFactoryId();
 
     let q = window.mySupabase
@@ -507,6 +531,7 @@ window.renderMonthlyYearChart = async function () {
       .select('hotel_id, date, total_amount')
       .eq('factory_id', factoryId);
     if (hotelId) q = q.eq('hotel_id', hotelId);
+    if (year) q = q.gte('date', `${year}-01-01`).lte('date', `${year}-12-31`);
 
     const { data: invoices, error } = await q;
     if (error) return alert('조회 오류: ' + error.message);
