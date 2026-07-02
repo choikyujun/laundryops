@@ -207,8 +207,7 @@ window.loadAnalysisTab = async function () {
           <button class="an-btn" onclick="window.renderDowChart()">조회</button>
         </div>
         <div id="dowLegend" class="dow-legend"></div>
-        <div class="analysis-canvas-wrap" style="cursor:pointer;"><canvas id="canvasDowAvg"></canvas></div>
-        <div id="dowDayDetail"></div>
+        <div class="analysis-canvas-wrap"><canvas id="canvasDowAvg"></canvas></div>
       </div>
 
       <!-- ④ 발송 리스트 -->
@@ -475,8 +474,6 @@ window.renderDailyChart = async function () {
 // ② 요일별 품목 평균 차트
 window.renderDowChart = async function () {
   const hId    = document.getElementById('an-hotel-dow').value;
-  const _dd = document.getElementById('dowDayDetail'); if (_dd) _dd.innerHTML = '';
-  window._dowDetail = null;
   const months = parseInt(document.getElementById('an-period-dow').value);
   if (!hId) return alert('거래처를 선택해주세요.');
 
@@ -511,32 +508,8 @@ window.renderDowChart = async function () {
 
   const itemNames = Object.keys(itemDow);
 
-  // 거래명세서(단가표) 품목 순서 = hotel_item_prices.sort_order 기준 (앱 공통 정렬과 동일)
-  const { data: _priceOrder } = await window.mySupabase.from('hotel_item_prices')
-    .select('name')
-    .eq('hotel_id', hId)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true });
-  const _orderIdx = {};
-  (_priceOrder || []).forEach((p, i) => { if (_orderIdx[p.name] === undefined) _orderIdx[p.name] = i; });
-  const _itemBySpecOrder = (a, b) => {
-    const ia = _orderIdx[a.name], ib = _orderIdx[b.name];
-    if (ia === undefined && ib === undefined) return a.name.localeCompare(b.name, 'ko');
-    if (ia === undefined) return 1;   // 단가표에 없는 품목은 뒤로
-    if (ib === undefined) return -1;
-    return ia - ib;
-  };
-
   const dowOrder  = [1,2,3,4,5,6,0]; // 월~일
   const dowLabels = dowOrder.map(d => DOW[d]);
-
-  window._dowDetail = dowOrder.map((d) => ({
-    label: DOW[d] + '요일',
-    items: itemNames.map((name) => {
-      const { sum, count } = itemDow[name][d];
-      return { name, avg: count > 0 ? Math.round((sum / count) * 10) / 10 : 0 };
-    }).filter(x => x.avg > 0).sort(_itemBySpecOrder)
-  }));
 
   const datasets = itemNames.map((name, i) => ({
     label: name,
@@ -563,15 +536,6 @@ window.renderDowChart = async function () {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      onHover: (e, els, chart) => { chart.canvas.style.cursor = 'pointer'; },
-      onClick: (evt, els, chart) => {
-        let idx = (els && els.length) ? els[0].index : null;
-        if (idx == null) {
-          const v = chart.scales.x.getValueForPixel(evt.x);
-          if (v != null) { const r = Math.round(v); if (r >= 0 && r < 7) idx = r; }
-        }
-        if (idx != null) window._renderDowDayDetail(idx);
-      },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: 평균 ${ctx.parsed.y}개` } }
@@ -619,6 +583,19 @@ window.renderDispatchList = async function () {
     .gte('date', startDate);
   if (error) { area.innerHTML = `<div style="color:#ef4444; padding:20px;">조회 오류: ${error.message}</div>`; return; }
 
+  // 거래명세서(단가표) 품목 순서 맵 (거래처별)
+  const { data: _po } = await window.mySupabase
+    .from('hotel_item_prices')
+    .select('hotel_id, name, sort_order')
+    .in('hotel_id', ids)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  const _orderByHotel = {};
+  (_po || []).forEach(p => {
+    if (!_orderByHotel[p.hotel_id]) _orderByHotel[p.hotel_id] = {};
+    if (_orderByHotel[p.hotel_id][p.name] === undefined) _orderByHotel[p.hotel_id][p.name] = Object.keys(_orderByHotel[p.hotel_id]).length;
+  });
+
   const DOWK = ['일','월','화','수','목','금','토'];
   area.innerHTML = `<div style="font-size:12px; color:#64748b; margin:6px 0 12px;">${DOWK[dow]}요일 기준 · 최근 ${months}개월 평균(반올림) · 거래처 ${hotels.length}곳</div>` +
     hotels.map(h => {
@@ -630,8 +607,16 @@ window.renderDispatchList = async function () {
         agg[it.name].sum += Number(it.qty || 0);
         agg[it.name].count += 1;
       }));
+      const _oi = _orderByHotel[h.id] || {};
       const rows = Object.keys(agg).map(name => ({ name, qty: Math.round(agg[name].sum / agg[name].count) }))
-        .filter(r => r.qty > 0).sort((a, b) => b.qty - a.qty);
+        .filter(r => r.qty > 0)
+        .sort((a, b) => {
+          const ia = _oi[a.name], ib = _oi[b.name];
+          if (ia === undefined && ib === undefined) return a.name.localeCompare(b.name, 'ko');
+          if (ia === undefined) return 1;   // 단가표에 없는 품목은 뒤로
+          if (ib === undefined) return -1;
+          return ia - ib;
+        });
       const tag = h.is_consignment ? ' <span style="font-size:11px;color:#dc2626;font-weight:700;">(위탁)</span>' : '';
       const head = `<div style="font-weight:700;font-size:14px;margin-bottom:8px;">${h.name}${tag}</div>`;
       if (!rows.length) {
@@ -764,46 +749,6 @@ window.removeHotelFromGroup = async function (hotelId) {
   const { error } = await window.mySupabase.from('hotels').update({ group_id: null }).eq('id', hotelId);
   if (error) return alert('거래처 제외 실패: ' + error.message);
   window.renderDeliveryGroups();
-};
-
-// ② 요일 클릭 → 그날 품목별 평균 수량 표
-window._renderDowDayDetail = function (idx) {
-  const box = document.getElementById('dowDayDetail');
-  if (!box) return;
-  const day = window._dowDetail && window._dowDetail[idx];
-  if (!day) { box.innerHTML = ''; return; }
-  if (!day.items.length) {
-    box.innerHTML = `<div style="margin-top:12px; padding:12px; color:#94A3B8; font-size:13px;">${day.label}에는 발송 이력이 없습니다.</div>`;
-    return;
-  }
-  const total = Math.round(day.items.reduce((a, b) => a + b.avg, 0) * 10) / 10;
-  box.innerHTML = `
-    <div style="margin-top:14px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
-      <div style="background:#f0f9ff; color:#0369a1; font-weight:700; font-size:13px; padding:10px 14px; border-bottom:1px solid #bae6fd;">
-        ${day.label} 품목별 평균 수량 <span style="font-weight:500; color:#64748b;">(배송 준비 참고)</span>
-      </div>
-      <table style="width:100%; border-collapse:collapse; font-size:13px;">
-        <thead>
-          <tr style="background:#f8fafc; color:#475569;">
-            <th style="text-align:left; padding:8px 14px; border-bottom:1px solid #e2e8f0;">품목</th>
-            <th style="text-align:right; padding:8px 14px; border-bottom:1px solid #e2e8f0;">평균 수량(개)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${day.items.map(it => `
-            <tr>
-              <td style="padding:8px 14px; border-bottom:1px solid #f1f5f9;">${it.name}</td>
-              <td style="padding:8px 14px; border-bottom:1px solid #f1f5f9; text-align:right; font-weight:600;">${it.avg}</td>
-            </tr>`).join('')}
-        </tbody>
-        <tfoot>
-          <tr style="background:#f8fafc; font-weight:700;">
-            <td style="padding:8px 14px;">합계</td>
-            <td style="padding:8px 14px; text-align:right;">${total}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>`;
 };
 
 // ③ 월별 연도 비교 차트
