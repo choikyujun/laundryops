@@ -839,7 +839,10 @@
     <div class="chart-container">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
             <div style="font-weight:700; font-size:15px;"><svg class="icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg> 거래명세서 발행 목록</div>
-            <input type="date" id="staffSearchDate" placeholder="날짜 선택 (전체보기)" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; font-size:14px; box-sizing:border-box;" onchange="loadStaffInvoiceList()">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <input type="text" id="staffSearchHotel" placeholder="거래처명 검색 (전체 기간)" style="padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:14px; box-sizing:border-box; min-width:150px;" onchange="loadStaffInvoiceList()">
+                <input type="date" id="staffSearchDate" placeholder="날짜 선택 (기본: 오늘)" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; font-size:14px; box-sizing:border-box;" onchange="loadStaffInvoiceList()">
+            </div>
         </div>
         <div class="table-scroll-wrap">
             <table class="admin-table" style="min-width:380px;">
@@ -1499,7 +1502,7 @@
   <script src="features/invoice-view-ux.js?v=20260702_1"></script>
   <script src="analysis/analysis.js?v=20260702_10"></script>
   <script src="features/staff-role.js?v=20260702_2"></script>
-  <script src="features/staff-dispatch.js?v=20260702_1"></script>
+  <script src="features/staff-dispatch.js?v=20260702_2"></script>
   <script>
   (function(){
     function _syncHotelBoxes(){
