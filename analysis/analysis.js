@@ -70,7 +70,6 @@ window.loadAnalysisTab = async function () {
       `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
     ).join('');
 
-    window._analysisHotels = hotels;
     const _dowKrDisp = ['일','월','화','수','목','금','토'];
     const _todayDow = today.getDay();
     const dispatchDowOptions = [1,2,3,4,5,6,0].map(d => `<option value="${d}"${d===_todayDow?' selected':''}>${_dowKrDisp[d]}요일</option>`).join('');
