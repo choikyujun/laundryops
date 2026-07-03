@@ -198,15 +198,29 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
-      // ===== 공장: 스태프 생성 =====
+      // ===== 공장: 스태프 생성 (현장직원=field / 배송기사=driver) =====
       case "create_staff": {
         if (!isFactory) return json({ error: "권한 없음" }, 403);
-        const { name, login_id, password } = body;
-        if (!name || !login_id || !password) return json({ error: "name, login_id, password 필요" }, 400);
+        const { name, login_id, password, role = "field", phone } = body;
+        if (!name) return json({ error: "이름이 필요합니다." }, 400);
+        if (role !== "field" && role !== "driver") return json({ error: "role 값 오류" }, 400);
         const sId = "st_" + Date.now();
+
+        if (role === "driver") {
+          // 배송기사: 로그인 계정 없음 → 이름 + 전화번호만 저장
+          if (!phone) return json({ error: "배송기사는 전화번호가 필요합니다." }, 400);
+          const { error: iErr } = await admin.from("staff").insert([
+            { id: sId, factory_id: caller.factoryId, name, phone, role: "driver" },
+          ]);
+          if (iErr) return json({ error: iErr.message }, 400);
+          return json({ ok: true, staff_id: sId });
+        }
+
+        // 현장직원: 기존 로그인 계정 생성 흐름 + phone/role
+        if (!login_id || !password) return json({ error: "name, login_id, password 필요" }, 400);
         const res = await createAccount("staff", login_id, password,
           { role: "staff", factory_id: caller.factoryId, staff_id: sId },
-          "staff", { id: sId, factory_id: caller.factoryId, name, login_id });
+          "staff", { id: sId, factory_id: caller.factoryId, name, login_id, role: "field", phone: phone || null });
         if (res.error) return json({ error: res.error }, 400);
         return json({ ok: true, staff_id: sId });
       }
@@ -214,10 +228,10 @@ Deno.serve(async (req) => {
       // ===== 공장: 스태프 수정/비번변경 =====
       case "update_staff": {
         if (!isFactory) return json({ error: "권한 없음" }, 403);
-        const { staff_id, name, new_login_id, new_password } = body;
+        const { staff_id, name, new_login_id, new_password, phone } = body;
         const { data: s } = await admin.from("staff").select("id, factory_id, login_id").eq("id", staff_id).maybeSingle();
         if (!s || s.factory_id !== caller.factoryId) return json({ error: "권한 없음" }, 403);
-        const u = await findUserByEmail(toEmail(s.login_id, "staff"));
+        const u = s.login_id ? await findUserByEmail(toEmail(s.login_id, "staff")) : null;
         if (u) {
           const upd: Record<string, unknown> = {};
           if (new_login_id) upd.email = toEmail(new_login_id, "staff");
@@ -227,6 +241,7 @@ Deno.serve(async (req) => {
         const row: Record<string, unknown> = {};
         if (name) row.name = name;
         if (new_login_id) row.login_id = new_login_id;
+        if (phone !== undefined) row.phone = phone;
         if (Object.keys(row).length) await admin.from("staff").update(row).eq("id", staff_id);
         return json({ ok: true });
       }
@@ -237,7 +252,7 @@ Deno.serve(async (req) => {
         const { staff_id } = body;
         const { data: s } = await admin.from("staff").select("factory_id, login_id").eq("id", staff_id).maybeSingle();
         if (!s || s.factory_id !== caller.factoryId) return json({ error: "권한 없음" }, 403);
-        await deleteByEmail(toEmail(s.login_id, "staff"));
+        if (s.login_id) await deleteByEmail(toEmail(s.login_id, "staff")); // 배송기사는 인증계정 없음 → 스킵
         await admin.from("staff").delete().eq("id", staff_id);
         return json({ ok: true });
       }
@@ -248,7 +263,7 @@ Deno.serve(async (req) => {
         const { login_id, password, fields = {} } = body;
         if (!login_id || !password) return json({ error: "login_id, password 필요" }, 400);
         const hId = "h_" + Date.now();
-        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment"];
+        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment", "group_name"];
         const row: Record<string, unknown> = { id: hId, factory_id: caller.factoryId, login_id };
         for (const k of allow) if (k in fields) row[k] = fields[k];
         const res = await createAccount("hotel", login_id, password,
@@ -270,7 +285,7 @@ Deno.serve(async (req) => {
           if (new_password) upd.password = new_password;
           if (Object.keys(upd).length) { const { error } = await admin.auth.admin.updateUserById(u.id, upd); if (error) return json({ error: error.message }, 400); }
         }
-        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment"];
+        const allow = ["name", "ceo", "phone", "biz_no", "address", "contract_type", "fixed_amount", "hotel_type", "status", "use_outbound_input", "outbound_tolerance_pct", "outbound_start_date", "is_consignment", "group_name"];
         const row: Record<string, unknown> = {};
         for (const k of allow) if (k in fields) row[k] = fields[k];
         if (new_login_id) row.login_id = new_login_id;
