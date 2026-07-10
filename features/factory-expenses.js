@@ -74,7 +74,10 @@
     btn.style.cssText = 'flex:1; min-width:110px; font-size:13px;';
     btn.innerHTML =
       '<svg class="icon" aria-hidden="true"><use href="#i-building-2"/></svg> 공장매입';
-    btn.addEventListener('click', openFactoryExpenses);
+    // [fix] 항상 최신 window.openFactoryExpenses(전체 초기화 래퍼)를 호출.
+    // 이 IIFE의 로컬 openFactoryExpenses(모달 표시만)를 직접 바인딩하면
+    // 스캐폴드/데이터 로드를 안 타서 첫 클릭에 빈 모달이 뜬다.
+    btn.addEventListener('click', function () { window.openFactoryExpenses(); });
 
     // "기본단가"(#tour-step-1) 바로 뒤 = "시작 가이드"(#tour-restart) 앞
     anchor.parentNode.insertBefore(btn, anchor.nextSibling);
@@ -972,12 +975,8 @@
         '<div style="font-size:10px;color:var(--secondary);margin-top:-2px;margin-bottom:4px;">지출 반영</div>' +
         '<div class="super-card-value" id="fe-prevProfitValue">계산 중...</div>' +
         '<div style="font-size:12px;margin-top:4px;" id="fe-prevProfitMargin"></div>';
-      // 클릭 시 공장매입 모달을 전월 선택 상태로 오픈
-      card.onclick = function () {
-        window.openFactoryExpenses();
-        var ymEl = document.getElementById('fe-ym');
-        if (ymEl) { ymEl.value = prevMonthYm(); ymEl.dispatchEvent(new Event('change')); }
-      };
+      // 클릭 시 공장매입 모달을 전월 선택 상태로 오픈 (targetYm로 로드 전 세팅)
+      card.onclick = function () { window.openFactoryExpenses(prevMonthYm()); };
     }
 
     var valEl = document.getElementById('fe-prevProfitValue');
@@ -1015,16 +1014,31 @@
 
   // ---- 모달 열기 시 초기화 (기존 open 래핑) ----------------------
   var _openFE = window.openFactoryExpenses;
-  window.openFactoryExpenses = function () {
-    if (typeof _openFE === 'function') _openFE(); // 모달 표시 + #factoryExpensesRoot 생성
+  window.openFactoryExpenses = async function (targetYm) {
+    // (1) 모달 표시 + #factoryExpensesRoot 생성 (동기)
+    if (typeof _openFE === 'function') _openFE();
+
+    // (2) 스캐폴드는 동기로 즉시 주입 → 첫 클릭에도 최소 UI(연월·섹션·항목추가)가
+    //     바로 보임. 이미 있으면 재주입 안 함(멱등). 데이터 로드는 아래서 async로.
+    feBuildScaffold();
+
+    // (3) #fe-ym 값 보장: targetYm 있으면 그 달, 없고 비어있으면 이번달.
+    //     (카드 경로가 targetYm로 전월을 넘겨 로드 전에 세팅 → 재조회 race 없음)
+    var ymEl = document.getElementById('fe-ym');
+    if (ymEl) {
+      if (targetYm) ymEl.value = targetYm;
+      else if (!ymEl.value) ymEl.value = curYm();
+    }
+
     state.fixed.draftGroups = [];
     state.extra.draftGroups = [];
-    feBuildScaffold();
     updatePastBanner();
-    feLoadFixed();
-    feLoadExtra();
-    feLoadPnl();
-    feLoadPnlChart();
+
+    // (4) 열 때마다 항상 전 섹션 로드 (첫 클릭이든 N번째든 항상 채워짐)
+    await feLoadFixed();
+    await feLoadExtra();
+    await feLoadPnl();
+    await feLoadPnlChart();
   };
 
   // ---- 대시보드 렌더 래핑: 전월 영업이익 카드 주입/갱신 ----------
