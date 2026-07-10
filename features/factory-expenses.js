@@ -501,6 +501,15 @@
     var p = ym.split('-');
     return (p[0] === refYm.split('-')[0]) ? (Number(p[1]) + '월') : (p[0] + '년 ' + Number(p[1]) + '월');
   }
+  // 적용 배너(고정·추가 공통): "{원본월} 데이터를 {선택월}에 적용하기" + 안내
+  function feApplyBanner(effectiveYm, ym) {
+    return '<div class="fe-carry-banner">' +
+      '<button type="button" class="fe-carry-btn" data-fe-act="apply">' +
+        feMonLabel(effectiveYm, ym) + ' 데이터를 ' + feMonLabel(ym, effectiveYm) + '에 적용하기' +
+      '</button>' +
+      '<div class="fe-carry-note">적용 전까지 손익·그래프에 반영되지 않습니다.</div>' +
+    '</div>';
+  }
   // 편집/월전환 후 재조회: 해당 섹션 + 손익 재계산(지출 변화 즉시 반영)
   function reload(kind) {
     return Promise.all([kind === 'fixed' ? feLoadFixed() : feLoadExtra(), feLoadPnl(), feLoadPnlChart()]);
@@ -539,10 +548,17 @@
     var l = document.getElementById('fe-ym-label');
     if (l) l.textContent = feYmLabel(selYm());
   }
-  function feShiftYm(delta) {
-    var p = selYm().split('-').map(Number);
-    var d = new Date(p[0], p[1] - 1 + delta, 1);
-    var ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  async function feShiftYm(delta) {
+    var oldYm = selYm();
+    var ym = feYmAdd(oldYm, delta);
+
+    // 앞으로 이동(delta>0) 시, 떠나는 달이 이월 상태면 자동 적용(경고 없음).
+    // feApplyMonth가 self-guard(자기 행 있으면/원본 없으면 skip)라 조건 검사 불필요.
+    if (delta > 0) {
+      await feApplyMonth(oldYm, 'fixed');
+      await feApplyMonth(oldYm, 'extra');
+    }
+
     var el = document.getElementById('fe-ym');
     if (el) el.value = ym;
     feSyncYmLabel();
@@ -652,19 +668,9 @@
     var setRows = rows.filter(function (r) { return r.year_month === effectiveYm; });
     var editable = (effectiveYm === null) || (effectiveYm === ym);
 
-    // 상속(미적용) 상태: 선택월에 고정 행이 없고 이전 달 세트를 미리보기 중
+    // 상속(미적용) 상태: 선택월에 고정 행이 없고 이월 원본을 미리보기 중
     var inherited = !!(effectiveYm && effectiveYm !== ym);
-
-    var bannerHtml = '';
-    if (inherited) {
-      var srcLabel = feMonLabel(effectiveYm, ym);
-      var dstLabel = feMonLabel(ym, effectiveYm);
-      bannerHtml =
-        '<div class="fe-carry-banner">' +
-          '<button type="button" class="fe-carry-btn" data-fe-act="carry">' + srcLabel + ' 데이터를 ' + dstLabel + '에 적용하기</button>' +
-          '<div class="fe-carry-note">적용 전까지 손익·그래프에 반영되지 않습니다.</div>' +
-        '</div>';
-    }
+    var bannerHtml = inherited ? feApplyBanner(effectiveYm, ym) : '';
 
     var revenue = await feMonthRevenue(ym);
     renderSection('fixed', body, setRows, editable, {
@@ -677,7 +683,7 @@
     });
   }
 
-  // ---- 추가지출 조회(선택월 행만, carry-forward 없음) ------------
+  // ---- 추가지출 조회(고정지출과 동일: 이월 원본 + 적용 규칙) ------
   async function feLoadExtra() {
     var body = document.getElementById('fe-extra-body');
     if (!body) return;
@@ -686,8 +692,10 @@
     body.innerHTML = '<div style="text-align:center; color:#64748b; padding:10px; font-size:13px;">불러오는 중...</div>';
 
     var res = await window.mySupabase.from('factory_expenses')
-      .select('id, group_name, name, amount, note, sort_order, created_at')
-      .eq('factory_id', currentFactoryId).eq('kind', 'extra').eq('year_month', ym)
+      .select('id, year_month, group_name, name, amount, note, sort_order, created_at')
+      .eq('factory_id', currentFactoryId).eq('kind', 'extra')
+      .lte('year_month', ym)
+      .order('year_month', { ascending: false })
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true });
 
@@ -696,30 +704,20 @@
       return;
     }
 
-    var extraRows = res.data || [];
-
-    // "가져오기" 버튼: 이 달 추가지출이 없고 전월에 추가지출이 있을 때만 노출
-    var importHtml = '';
-    if (extraRows.length === 0) {
-      var prevYm = feYmAdd(ym, -1);
-      var prevChk = await window.mySupabase.from('factory_expenses')
-        .select('id').eq('factory_id', currentFactoryId).eq('kind', 'extra').eq('year_month', prevYm).limit(1);
-      if (!prevChk.error && prevChk.data && prevChk.data.length) {
-        var sLabel = feMonLabel(prevYm, ym);
-        var dLabel = feMonLabel(ym, prevYm);
-        importHtml =
-          '<div class="fe-import-row">' +
-            '<button type="button" class="fe-carry-btn" data-fe-act="import-extra">' + sLabel + ' 데이터를 ' + dLabel + '에 적용하기</button>' +
-          '</div>';
-      }
-    }
+    var rows = res.data || [];
+    var effectiveYm = null;
+    rows.forEach(function (r) { if (effectiveYm === null || r.year_month > effectiveYm) effectiveYm = r.year_month; });
+    var setRows = rows.filter(function (r) { return r.year_month === effectiveYm; });
+    var editable = (effectiveYm === null) || (effectiveYm === ym);
+    var inherited = !!(effectiveYm && effectiveYm !== ym);
+    var bannerHtml = inherited ? feApplyBanner(effectiveYm, ym) : '';
 
     var revenueX = await feMonthRevenue(ym);
-    renderSection('extra', body, extraRows, true, {
+    renderSection('extra', body, setRows, editable, {
       totalLabel: '추가지출 합계',
-      bannerHtml: '',
+      bannerHtml: bannerHtml,
       revenue: revenueX,
-      importHtml: importHtml,
+      unapplied: inherited,
       guide: '이 달에만 들어가는 일회성 지출입니다.',
       emptyMsg: '등록된 추가지출이 없습니다. 위에서 그룹을 추가해 시작하세요.'
     });
@@ -908,9 +906,6 @@
       '</div>';
     }
 
-    // 가져오기 버튼(추가지출 탭 전용) — 그룹 추가 박스 근처
-    if (opts.importHtml) html += opts.importHtml;
-
     // (b) 합계 줄: 왼쪽 "매출 N원 기준", 오른쪽 "합계 N원 · 매출의 XX%"(비율 액센트)
     html += '<div class="fe-total">' +
       '<span class="fe-total-left">매출 ' + fmtWon(revenue) + ' 기준</span>' +
@@ -984,15 +979,10 @@
     var act = el.getAttribute('data-fe-act');
     var ym = state.ym;
 
-    if (act === 'carry') { // 고정지출 전용
+    if (act === 'apply') { // 고정·추가 공통: 이월 원본을 선택월에 적용
       if (!guardPastEdit(ym)) return;
-      await feCarryForward();
-      return;
-    }
-
-    if (act === 'import-extra') { // 추가지출: 전월 데이터를 선택월로 복사
-      if (!guardPastEdit(ym)) return;
-      await feImportExtra();
+      await feApplyMonth(ym, kind);
+      await reload(kind);
       return;
     }
 
@@ -1094,30 +1084,31 @@
     await reload(kind);
   }
 
-  // ---- carry-forward (고정지출 전용): 이전 달 유효 세트를 선택월로 복사 ----
-  async function feCarryForward() {
-    var ym = state.ym;
-
+  // ---- 공통: 이월 원본을 선택월에 적용(복사) ---------------------
+  // ym에 그 kind 자기 행이 없고, 이월 원본(< ym 중 그 kind 가장 최근 달)이 있으면
+  // 원본 행을 ym으로 insert. 자기 행 있으면/원본 없으면 skip. (자동·수동 공용, alert 없음)
+  // 반환: 실제로 복사했으면 true.
+  async function feApplyMonth(ym, kind) {
     var chk = await window.mySupabase.from('factory_expenses')
-      .select('id').eq('factory_id', currentFactoryId).eq('kind', 'fixed').eq('year_month', ym).limit(1);
-    if (chk.error) { alert('확인 실패: ' + chk.error.message); return; }
-    if (chk.data && chk.data.length) { await feLoadFixed(); return; } // 이미 있으면 복사 금지
+      .select('id').eq('factory_id', currentFactoryId).eq('kind', kind).eq('year_month', ym).limit(1);
+    if (chk.error) { console.warn('[factory-expenses] apply chk error', chk.error); return false; }
+    if (chk.data && chk.data.length) return false; // 이미 자기 행 → 중복 가드
 
     var src = await window.mySupabase.from('factory_expenses')
       .select('group_name, name, amount, note, sort_order, year_month')
-      .eq('factory_id', currentFactoryId).eq('kind', 'fixed').lt('year_month', ym)
+      .eq('factory_id', currentFactoryId).eq('kind', kind).lt('year_month', ym)
       .order('year_month', { ascending: false })
       .order('sort_order', { ascending: true });
-    if (src.error) { alert('원본 조회 실패: ' + src.error.message); return; }
+    if (src.error) { console.warn('[factory-expenses] apply src error', src.error); return false; }
 
     var rows = src.data || [];
-    if (!rows.length) { await feLoadFixed(); return; }
+    if (!rows.length) return false; // 이월 원본 없음
     var eYm = rows[0].year_month;
     var payload = rows.filter(function (r) { return r.year_month === eYm; }).map(function (r) {
       return {
         factory_id: currentFactoryId,
         year_month: ym,            // 선택월로 복사 (원본 행은 건드리지 않음)
-        kind: 'fixed',
+        kind: kind,
         group_name: r.group_name,
         name: r.name,
         amount: r.amount,
@@ -1127,45 +1118,14 @@
     });
 
     var ins = await window.mySupabase.from('factory_expenses').insert(payload);
-    if (ins.error) { alert('복사 실패: ' + ins.error.message); return; }
-    await reload('fixed'); // 선택월 세트 → 편집 가능 + 손익 반영
+    if (ins.error) { console.warn('[factory-expenses] apply insert error', ins.error); return false; }
+    return true;
   }
 
-  // ---- 추가지출 가져오기: 전월(선택월-1)의 extra 행을 선택월로 복사 ----
-  async function feImportExtra() {
-    var ym = state.ym;
-    var prevYm = feYmAdd(ym, -1);
-
-    // 이미 이 달 extra가 있으면 중복 방지
-    var chk = await window.mySupabase.from('factory_expenses')
-      .select('id').eq('factory_id', currentFactoryId).eq('kind', 'extra').eq('year_month', ym).limit(1);
-    if (chk.error) { alert('확인 실패: ' + chk.error.message); return; }
-    if (chk.data && chk.data.length) { await reload('extra'); return; }
-
-    var src = await window.mySupabase.from('factory_expenses')
-      .select('group_name, name, amount, note, sort_order')
-      .eq('factory_id', currentFactoryId).eq('kind', 'extra').eq('year_month', prevYm)
-      .order('sort_order', { ascending: true });
-    if (src.error) { alert('원본 조회 실패: ' + src.error.message); return; }
-
-    var rows = src.data || [];
-    if (!rows.length) { await reload('extra'); return; }
-    var payload = rows.map(function (r) {
-      return {
-        factory_id: currentFactoryId,
-        year_month: ym,            // 선택월로 복사 (전월 원본은 건드리지 않음)
-        kind: 'extra',
-        group_name: r.group_name,
-        name: r.name,
-        amount: r.amount,
-        note: r.note,
-        sort_order: r.sort_order
-      };
-    });
-
-    var ins = await window.mySupabase.from('factory_expenses').insert(payload);
-    if (ins.error) { alert('복사 실패: ' + ins.error.message); return; }
-    await reload('extra'); // 추가지출 + 손익 + 그래프 반영
+  // 시그니처 유지용 래퍼(고정지출): feApplyMonth 재사용.
+  async function feCarryForward() {
+    await feApplyMonth(state.ym, 'fixed');
+    await reload('fixed');
   }
 
   // ---- 대시보드 카드: 전월 영업이익 (거래처/직원 카드 대체) --------
@@ -1206,6 +1166,11 @@
     var valEl = document.getElementById('fe-prevProfitValue');
     var marEl = document.getElementById('fe-prevProfitMargin');
     try {
+      // 전월이 이월 상태면 먼저 자동 적용(중복 가드로 1회만 insert) → RPC가 그 달 값 반영.
+      // 전월을 한 번도 안 열어도 고정비/추가비가 0으로 안 빠지게.
+      await feApplyMonth(prevYm, 'fixed');
+      await feApplyMonth(prevYm, 'extra');
+
       // 매출 (정정 유틸)
       var rev = 0;
       if (typeof window.computeMonthlyRevenue === 'function') {
