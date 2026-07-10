@@ -65,6 +65,10 @@
       '#factoryExpensesModal .fe-grp-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '#factoryExpensesModal .fe-additem-link{border:none;background:none;color:#005b9f;font-size:12px;font-weight:600;cursor:pointer;padding:0;white-space:nowrap;}',
       '#factoryExpensesModal .fe-additem-link:hover{text-decoration:underline;}',
+      '#factoryExpensesModal .fe-grp-right{display:flex;align-items:center;gap:8px;}',
+      '#factoryExpensesModal .fe-grp-move{display:inline-flex;gap:2px;}',
+      '#factoryExpensesModal .fe-move-btn{border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:4px;width:22px;height:22px;font-size:9px;line-height:1;cursor:pointer;padding:0;}',
+      '#factoryExpensesModal .fe-move-btn:hover{background:#f1f5f9;color:#334155;}',
       '#factoryExpensesModal .fe-grp-sub{color:#475569;font-weight:700;white-space:nowrap;}',
       '#factoryExpensesModal .fe-grp-empty{padding:8px 12px;font-size:12px;color:#94a3b8;}',
       '#factoryExpensesModal .fe-item-row{display:grid;grid-template-columns:1fr 110px 1fr 30px;gap:6px;align-items:center;padding:5px 10px;border-top:1px solid #eef2f7;}',
@@ -881,6 +885,10 @@
       state[kind].draftGroups.forEach(function (g) { if (!map[g]) { map[g] = []; order.push(g); } });
     }
     state[kind].renderGroups = order.slice();
+    // 순서 조정용: 렌더 순서대로 그룹별 행 id 목록 저장(정렬 재배치에 사용)
+    state[kind].blocks = order.map(function (g) {
+      return { name: g, ids: (map[g] || []).map(function (r) { return r.id; }) };
+    });
 
     var html = opts.bannerHtml || '';
 
@@ -916,13 +924,23 @@
       var items = map[g];
       var sub = items.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
 
+      var moveBtns = '';
+      if (editable) {
+        moveBtns = '<span class="fe-grp-move">' +
+          (gi === 0 ? '' : '<button type="button" class="fe-move-btn" data-fe-act="group-up" data-group-index="' + gi + '" aria-label="위로">&#9650;</button>') +
+          (gi === order.length - 1 ? '' : '<button type="button" class="fe-move-btn" data-fe-act="group-down" data-group-index="' + gi + '" aria-label="아래로">&#9660;</button>') +
+        '</span>';
+      }
+
       html += '<div class="fe-groupbox' + (opts.unapplied ? ' fe-muted' : '') + '">';
       html += '<div class="fe-grp-head">' +
         '<span class="fe-grp-left"><span class="fe-grp-title">' + esc(g) + '</span>' +
           (editable ? '<button type="button" class="fe-additem-link" data-fe-act="toggle-additem" data-group-index="' + gi + '">+ 항목 추가</button>' : '') +
         '</span>' +
-        '<span class="fe-grp-sub">' + fmtWon(sub) +
-          ' <span class="fe-pct-danger">매출의 ' + fePct(sub, revenue) + '</span>' +
+        '<span class="fe-grp-right">' + moveBtns +
+          '<span class="fe-grp-sub">' + fmtWon(sub) +
+            ' <span class="fe-pct-danger">매출의 ' + fePct(sub, revenue) + '</span>' +
+          '</span>' +
         '</span>' +
       '</div>';
 
@@ -975,6 +993,13 @@
       if (!guardPastEdit(ym)) return;
       await feApplyMonth(ym, kind);
       await reload(kind);
+      return;
+    }
+
+    if (act === 'group-up' || act === 'group-down') { // 그룹 상하 순서 조정
+      if (!guardPastEdit(ym)) return;
+      var mgi = Number(el.getAttribute('data-group-index'));
+      await feMoveGroup(kind, mgi, act === 'group-up' ? mgi - 1 : mgi + 1);
       return;
     }
 
@@ -1074,6 +1099,33 @@
     var res = await window.mySupabase.from('factory_expenses').delete().eq('id', id);
     if (res.error) { alert('삭제 실패: ' + res.error.message); return; }
     await reload(kind);
+  }
+
+  // ---- 그룹 상하 순서 조정 (선택월 그 kind 행의 sort_order 재배치) ----
+  // 인접 그룹과 스왑 후, 그 달 rows sort_order를 blockIdx*1000+itemIdx로 정규화.
+  // 그룹 내부 항목 상대순서 보존. 선택월 행만 update(다른 달 불변). 순서만 → 합계·손익 무관.
+  async function feMoveGroup(kind, gi, target) {
+    var blocks = state[kind].blocks || [];
+    if (target < 0 || target >= blocks.length) return;
+
+    var nb = blocks.slice();
+    var tmp = nb[gi]; nb[gi] = nb[target]; nb[target] = tmp;
+
+    var updates = [];
+    nb.forEach(function (blk, bi) {
+      blk.ids.forEach(function (id, idx) {
+        updates.push({ id: id, sort_order: bi * 1000 + idx });
+      });
+    });
+    if (!updates.length) { await (kind === 'fixed' ? feLoadFixed() : feLoadExtra()); return; }
+
+    var results = await Promise.all(updates.map(function (u) {
+      return window.mySupabase.from('factory_expenses').update({ sort_order: u.sort_order }).eq('id', u.id);
+    }));
+    var errRes = results.filter(function (r) { return r.error; })[0];
+    if (errRes) { alert('순서 변경 실패: ' + errRes.error.message); }
+
+    await (kind === 'fixed' ? feLoadFixed() : feLoadExtra()); // 순서만 → 섹션만 재렌더
   }
 
   // ---- 공통: 이월 원본을 선택월에 적용(복사) ---------------------
