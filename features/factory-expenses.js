@@ -23,7 +23,7 @@
     if (document.getElementById('fe-styles')) return;
     var css = [
       '#factoryExpensesModal .modal-content{background:#fff;}',
-      '#factoryExpensesModal .fe-header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;}',
+      '#factoryExpensesModal .fe-header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;cursor:move;user-select:none;-webkit-user-select:none;}',
       '#factoryExpensesModal .fe-title{font-weight:800;font-size:16px;color:#0f172a;}',
       '#factoryExpensesModal .fe-monthnav{display:flex;align-items:center;gap:8px;margin-left:auto;}',
       '#factoryExpensesModal .fe-navbtn{border:1px solid #cbd5e1;background:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:11px;line-height:1;color:#334155;}',
@@ -1236,6 +1236,87 @@
     }
   }
 
+  // ---- 헤더 드래그 이동 (공장매입 모달 본체만) ------------------
+  var dragState = { x: 0, y: 0 };
+
+  function feModalContent() { return document.querySelector('#factoryExpensesModal .modal-content'); }
+
+  function feApplyDrag() {
+    var c = feModalContent();
+    if (c) c.style.transform = 'translate(' + dragState.x + 'px,' + dragState.y + 'px)';
+  }
+
+  function feResetDrag() {
+    dragState.x = 0; dragState.y = 0;
+    var c = feModalContent();
+    if (c) c.style.transform = '';
+  }
+
+  function feEnableDrag() {
+    var header = document.querySelector('#factoryExpensesModal .fe-header');
+    if (!header || header.dataset.feDrag === '1') return; // 중복 바인딩 가드
+    header.dataset.feDrag = '1';
+
+    var dragging = false, startX = 0, startY = 0, baseX = 0, baseY = 0;
+
+    function pt(e) {
+      if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      if (e.changedTouches && e.changedTouches.length) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      return { x: e.clientX, y: e.clientY };
+    }
+
+    // 헤더가 뷰포트 안에 남게 최소 경계 클램프
+    function clampVisible() {
+      var hr = header.getBoundingClientRect();
+      var vw = window.innerWidth, vh = window.innerHeight, m = 24;
+      var ax = 0, ay = 0;
+      if (hr.right < m) ax += m - hr.right;
+      if (hr.left > vw - m) ax += vw - m - hr.left;
+      if (hr.top < 0) ay += -hr.top;
+      if (hr.top > vh - m) ay += vh - m - hr.top;
+      if (ax || ay) { dragState.x += ax; dragState.y += ay; feApplyDrag(); }
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      var p = pt(e);
+      dragState.x = baseX + (p.x - startX);
+      dragState.y = baseY + (p.y - startY);
+      feApplyDrag();
+      clampVisible();
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function onUp() {
+      dragging = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+      document.removeEventListener('touchcancel', onUp);
+      document.body.style.userSelect = '';
+    }
+
+    function onDown(e) {
+      // 월이동 화살표·닫기 X·입력칸 등 인터랙티브 요소에서 시작하면 드래그 무시
+      if (e.target.closest('button, input, select, textarea, a')) return;
+      var p = pt(e);
+      dragging = true;
+      startX = p.x; startY = p.y;
+      baseX = dragState.x; baseY = dragState.y;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onUp);
+      document.addEventListener('touchcancel', onUp);
+      document.body.style.userSelect = 'none';
+      if (e.cancelable) e.preventDefault();
+    }
+
+    header.addEventListener('mousedown', onDown);
+    header.addEventListener('touchstart', onDown, { passive: false });
+  }
+
   // ---- 모달 열기 시 초기화 (기존 open 래핑) ----------------------
   var _openFE = window.openFactoryExpenses;
   window.openFactoryExpenses = async function (targetYm, targetTab) {
@@ -1245,6 +1326,8 @@
     // (2) 스캐폴드는 동기로 즉시 주입 → 첫 클릭에도 최소 UI(헤더·탭·패널)가
     //     바로 보임. 이미 있으면 재주입 안 함(멱등). 데이터 로드는 아래서 async로.
     feBuildScaffold();
+    feEnableDrag();  // 헤더 드래그 바인딩(중복 가드 있음)
+    feResetDrag();   // 다시 열면 위치는 가운데로 초기화
 
     // (3) #fe-ym 값 보장: targetYm 있으면 그 달, 없고 비어있으면 이번달.
     //     (카드 경로가 targetYm로 전월을 넘겨 로드 전에 세팅 → 재조회 race 없음)
