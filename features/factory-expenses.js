@@ -49,8 +49,12 @@
       '#factoryExpensesModal .fe-total b{font-size:15px;color:#0f172a;font-weight:800;}',
       '#factoryExpensesModal .fe-empty{color:#64748b;padding:10px 2px;font-size:13px;}',
       '#factoryExpensesModal .fe-groupbox{border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;overflow:hidden;}',
-      '#factoryExpensesModal .fe-grp-head{display:flex;justify-content:space-between;padding:8px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-weight:700;font-size:13px;color:#0f172a;}',
-      '#factoryExpensesModal .fe-grp-sub{color:#475569;font-weight:700;}',
+      '#factoryExpensesModal .fe-grp-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-weight:700;font-size:13px;color:#0f172a;}',
+      '#factoryExpensesModal .fe-grp-left{display:flex;align-items:center;gap:10px;min-width:0;}',
+      '#factoryExpensesModal .fe-grp-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '#factoryExpensesModal .fe-additem-link{border:none;background:none;color:#005b9f;font-size:12px;font-weight:600;cursor:pointer;padding:0;white-space:nowrap;}',
+      '#factoryExpensesModal .fe-additem-link:hover{text-decoration:underline;}',
+      '#factoryExpensesModal .fe-grp-sub{color:#475569;font-weight:700;white-space:nowrap;}',
       '#factoryExpensesModal .fe-grp-empty{padding:8px 12px;font-size:12px;color:#94a3b8;}',
       '#factoryExpensesModal .fe-item-row{display:grid;grid-template-columns:1fr 110px 1fr 30px;gap:6px;align-items:center;padding:5px 10px;border-top:1px solid #eef2f7;}',
       '#factoryExpensesModal .fe-cell-input{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:5px;padding:4px 6px;font-size:13px;background:transparent;color:#0f172a;}',
@@ -60,7 +64,7 @@
       '#factoryExpensesModal .fe-item-note{font-size:12px;color:#94a3b8;}',
       '#factoryExpensesModal .fe-del{border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;}',
       '#factoryExpensesModal .fe-del:hover{color:#ef4444;}',
-      '#factoryExpensesModal .fe-additem{display:grid;grid-template-columns:1fr 110px 1fr 30px;gap:6px;align-items:center;padding:8px 10px;background:#fafcff;border-top:1px solid #eef2f7;}',
+      '#factoryExpensesModal .fe-additem{grid-template-columns:1fr 110px 1fr auto;gap:6px;align-items:center;padding:8px 10px;background:#fafcff;border-top:1px solid #eef2f7;}',
       '#factoryExpensesModal .fe-profit-wrap{padding:4px 0 10px;}',
       '#factoryExpensesModal .fe-profit-label{font-size:13px;color:#64748b;}',
       '#factoryExpensesModal .fe-profit-value{font-size:28px;font-weight:800;margin-top:2px;}',
@@ -859,7 +863,12 @@
       var sub = items.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
 
       html += '<div class="fe-groupbox">';
-      html += '<div class="fe-grp-head"><span>' + esc(g) + '</span><span class="fe-grp-sub">' + fmtWon(sub) + '</span></div>';
+      html += '<div class="fe-grp-head">' +
+        '<span class="fe-grp-left"><span class="fe-grp-title">' + esc(g) + '</span>' +
+          (editable ? '<button type="button" class="fe-additem-link" data-fe-act="toggle-additem" data-group-index="' + gi + '">+ 항목 추가</button>' : '') +
+        '</span>' +
+        '<span class="fe-grp-sub">' + fmtWon(sub) + '</span>' +
+      '</div>';
 
       if (items.length === 0) {
         html += '<div class="fe-grp-empty">항목을 추가하세요</div>';
@@ -884,11 +893,12 @@
       });
 
       if (editable) {
-        html += '<div class="fe-additem" data-fe-additem="' + gi + '">' +
+        // 상시 노출 X — "+ 항목 추가" 링크로 토글되는 입력 줄(저장 시 닫힘)
+        html += '<div class="fe-additem" data-fe-additem="' + gi + '" style="display:none;">' +
           '<input class="fe-input fe-ai-name" placeholder="항목 이름">' +
           '<input class="fe-input fe-amount fe-ai-amount" type="number" placeholder="금액">' +
           '<input class="fe-input fe-ai-note" placeholder="비고(선택)">' +
-          '<button type="button" class="fe-btn-quiet" data-fe-act="add-item" data-group-index="' + gi + '" aria-label="항목 추가">+</button>' +
+          '<button type="button" class="fe-btn-quiet" data-fe-act="add-item" data-group-index="' + gi + '">저장</button>' +
         '</div>';
       }
 
@@ -919,6 +929,17 @@
       if (state[kind].renderGroups.indexOf(name) !== -1) { alert('이미 있는 그룹입니다.'); return; }
       state[kind].draftGroups.push(name);
       await reload(kind);
+      return;
+    }
+
+    if (act === 'toggle-additem') { // 입력 줄 열기/닫기 (편집 아님 → 경고 없음)
+      var box = el.closest('.fe-groupbox');
+      if (!box) return;
+      var row = box.querySelector('[data-fe-additem]');
+      if (!row) return;
+      var opening = (row.style.display === 'none' || !row.style.display);
+      row.style.display = opening ? 'grid' : 'none';
+      if (opening) { var nm = row.querySelector('.fe-ai-name'); if (nm) nm.focus(); }
       return;
     }
 
