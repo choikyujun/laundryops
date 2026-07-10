@@ -548,17 +548,9 @@
     var l = document.getElementById('fe-ym-label');
     if (l) l.textContent = feYmLabel(selYm());
   }
-  async function feShiftYm(delta) {
-    var oldYm = selYm();
-    var ym = feYmAdd(oldYm, delta);
-
-    // 앞으로 이동(delta>0) 시, 떠나는 달이 이월 상태면 자동 적용(경고 없음).
-    // feApplyMonth가 self-guard(자기 행 있으면/원본 없으면 skip)라 조건 검사 불필요.
-    if (delta > 0) {
-      await feApplyMonth(oldYm, 'fixed');
-      await feApplyMonth(oldYm, 'extra');
-    }
-
+  // 팝업 좌우 이동은 순수 조회만 — 자동 적용 없음(백필은 앱 시작 시 1회).
+  function feShiftYm(delta) {
+    var ym = feYmAdd(selYm(), delta);
     var el = document.getElementById('fe-ym');
     if (el) el.value = ym;
     feSyncYmLabel();
@@ -1128,6 +1120,41 @@
     await reload('fixed');
   }
 
+  // ---- 앱 시작 백필 (유일한 자동 적용 지점) ----------------------
+  var feBackfillStarted = false;
+  var feBackfillDone = Promise.resolve();
+
+  function feStartBackfill() {
+    if (feBackfillStarted) return feBackfillDone;
+    feBackfillStarted = true;
+    feBackfillDone = feRunBackfill();
+    return feBackfillDone;
+  }
+
+  // 최소 연월부터 '실제 이번달' 미만까지 오름차순으로 이월 적용을 메꿈.
+  // 실제 이번달 자신은 백필 안 함(미적용 0 유지 → 수동 적용 버튼). feApplyMonth
+  // self-guard로 자기 행 있으면/원본 없으면 skip. 오름차순이라 연쇄 적용됨.
+  async function feRunBackfill() {
+    try {
+      if (!currentFactoryId) return;
+      var realCurYM = curYm(); // 실제 오늘의 'YYYY-MM' (#fe-ym/selYm 아님)
+      var minRes = await window.mySupabase.from('factory_expenses')
+        .select('year_month').eq('factory_id', currentFactoryId)
+        .order('year_month', { ascending: true }).limit(1).maybeSingle();
+      if (minRes.error || !minRes.data) return;
+      var m = minRes.data.year_month;
+      var guard = 0;
+      while (m < realCurYM && guard < 600) {
+        await feApplyMonth(m, 'fixed');
+        await feApplyMonth(m, 'extra');
+        m = feYmAdd(m, 1);
+        guard += 1;
+      }
+    } catch (e) {
+      console.warn('[factory-expenses] backfill error', e);
+    }
+  }
+
   // ---- 대시보드 카드: 전월 영업이익 (거래처/직원 카드 대체) --------
   // 전월 = 오늘 기준 지난달 'YYYY-MM'
   function prevMonthYm() {
@@ -1166,10 +1193,8 @@
     var valEl = document.getElementById('fe-prevProfitValue');
     var marEl = document.getElementById('fe-prevProfitMargin');
     try {
-      // 전월이 이월 상태면 먼저 자동 적용(중복 가드로 1회만 insert) → RPC가 그 달 값 반영.
-      // 전월을 한 번도 안 열어도 고정비/추가비가 0으로 안 빠지게.
-      await feApplyMonth(prevYm, 'fixed');
-      await feApplyMonth(prevYm, 'extra');
+      // 앱 시작 백필 완료 후 계산 — 전월이 백필됐으면 그 값으로 카드 렌더.
+      await feBackfillDone;
 
       // 매출 (정정 유틸)
       var rev = 0;
@@ -1293,6 +1318,7 @@
     feBuildScaffold();
     feEnableDrag();  // 헤더 드래그 바인딩(중복 가드 있음)
     feResetDrag();   // 다시 열면 위치는 가운데로 초기화
+    feStartBackfill(); // 앱 로드당 1회 백필(플래그 가드)
 
     // (3) #fe-ym 값 보장: targetYm 있으면 그 달, 없고 비어있으면 이번달.
     //     (카드 경로가 targetYm로 전월을 넘겨 로드 전에 세팅 → 재조회 race 없음)
@@ -1324,6 +1350,7 @@
   var _origLoadDash = window.loadAdminDashboard;
   window.loadAdminDashboard = async function () {
     if (typeof _origLoadDash === 'function') await _origLoadDash.apply(this, arguments);
-    await feRenderProfitCard();
+    feStartBackfill();          // 앱 로드당 1회 백필(currentFactoryId 확보 후)
+    await feRenderProfitCard(); // 내부에서 await feBackfillDone
   };
 })();
