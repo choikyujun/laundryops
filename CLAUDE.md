@@ -142,16 +142,15 @@ syncToSupabase()              // 레거시 전체 sync
 
 ## 🚀 배포 절차
 
-```bash
-# 1. dist/ 폴더 동기화 (필수)
-cp style.css dist/
-# 변경된 features/ 파일도 dist/ 복사
+> Vercel이 repo **루트를 정적 서빙**한다(vercel.json에 rootDirectory/outputDirectory 없음).
+> `dist/`는 `.gitignore`돼 있고 서빙되지 않으므로 **동기화 불필요** — 루트 파일만 커밋하면 반영된다.
 
-# 2. 버전 태그 갱신 (캐시 우회)
+```bash
+# 1. 버전 태그 갱신 (캐시 우회)
 # index.html 내 스크립트 태그:
 # app_v38.js?v=YYYYMMDD_XX 형식으로 수정
 
-# 3. Git push → Vercel 자동 배포
+# 2. Git push → Vercel 자동 배포 (루트 파일 커밋)
 git add .
 git commit -m "v38: 변경 내용 요약"
 git push origin main
