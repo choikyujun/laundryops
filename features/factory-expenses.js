@@ -18,9 +18,68 @@
   var MODAL_ID = 'factoryExpensesModal';
   var BTN_ID = 'btnFactoryExpenses';
 
-  // ---- 자리표시 모달 DOM 생성 (1회) -------------------------
+  // ---- 스코프드 스타일 (공용 클래스와 충돌 없게 #factoryExpensesModal 하위) ----
+  function injectStyles() {
+    if (document.getElementById('fe-styles')) return;
+    var css = [
+      '#factoryExpensesModal .modal-content{background:#fff;}',
+      '#factoryExpensesModal .fe-header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;}',
+      '#factoryExpensesModal .fe-title{font-weight:800;font-size:16px;color:#0f172a;}',
+      '#factoryExpensesModal .fe-monthnav{display:flex;align-items:center;gap:8px;margin-left:auto;}',
+      '#factoryExpensesModal .fe-navbtn{border:1px solid #cbd5e1;background:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:11px;line-height:1;color:#334155;}',
+      '#factoryExpensesModal .fe-navbtn:hover{background:#f1f5f9;}',
+      '#factoryExpensesModal .fe-ym-label{font-weight:700;font-size:14px;min-width:96px;text-align:center;color:#0f172a;}',
+      '#factoryExpensesModal .fe-close{border:none;background:none;font-size:18px;cursor:pointer;color:#64748b;line-height:1;padding:0 2px;}',
+      '#factoryExpensesModal .fe-tabs{display:flex;gap:4px;padding:12px 20px 0;border-bottom:1px solid #e2e8f0;}',
+      '#factoryExpensesModal .fe-tab{border:none;background:transparent;color:#64748b;font-weight:600;font-size:13px;padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;}',
+      '#factoryExpensesModal .fe-tab:hover{color:#334155;}',
+      '#factoryExpensesModal .fe-tab-active{background:#e6f0f9;color:#005b9f;}',
+      '#factoryExpensesModal .fe-body{padding:16px 20px 20px;}',
+      '#factoryExpensesModal .fe-intro{font-size:12px;color:#64748b;margin-bottom:10px;}',
+      '#factoryExpensesModal .fe-addbox{background:#f0f7ff;border:1px solid #dbeafe;border-radius:8px;padding:12px;margin-bottom:12px;}',
+      '#factoryExpensesModal .fe-addrow{display:flex;gap:8px;align-items:center;}',
+      '#factoryExpensesModal .fe-guide{font-size:12px;color:#64748b;margin-bottom:6px;}',
+      '#factoryExpensesModal .fe-input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff;}',
+      '#factoryExpensesModal .fe-grow{flex:1;}',
+      '#factoryExpensesModal .fe-btn-accent{background:#005b9f;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}',
+      '#factoryExpensesModal .fe-btn-accent:hover{background:#00487d;}',
+      '#factoryExpensesModal .fe-btn-quiet{background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:15px;line-height:1;cursor:pointer;height:30px;}',
+      '#factoryExpensesModal .fe-btn-quiet:hover{background:#f1f5f9;}',
+      '#factoryExpensesModal .fe-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-size:13px;color:#64748b;}',
+      '#factoryExpensesModal .fe-total b{font-size:15px;color:#0f172a;font-weight:800;}',
+      '#factoryExpensesModal .fe-empty{color:#64748b;padding:10px 2px;font-size:13px;}',
+      '#factoryExpensesModal .fe-groupbox{border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;overflow:hidden;}',
+      '#factoryExpensesModal .fe-grp-head{display:flex;justify-content:space-between;padding:8px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-weight:700;font-size:13px;color:#0f172a;}',
+      '#factoryExpensesModal .fe-grp-sub{color:#475569;font-weight:700;}',
+      '#factoryExpensesModal .fe-grp-empty{padding:8px 12px;font-size:12px;color:#94a3b8;}',
+      '#factoryExpensesModal .fe-item-row{display:grid;grid-template-columns:1fr 110px 1fr 30px;gap:6px;align-items:center;padding:5px 10px;border-top:1px solid #eef2f7;}',
+      '#factoryExpensesModal .fe-cell-input{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:5px;padding:4px 6px;font-size:13px;background:transparent;color:#0f172a;}',
+      '#factoryExpensesModal .fe-cell-input:hover,#factoryExpensesModal .fe-cell-input:focus{border-color:#cbd5e1;background:#fff;outline:none;}',
+      '#factoryExpensesModal .fe-amount{text-align:right;}',
+      '#factoryExpensesModal .fe-item-name{font-size:13px;color:#0f172a;}',
+      '#factoryExpensesModal .fe-item-note{font-size:12px;color:#94a3b8;}',
+      '#factoryExpensesModal .fe-del{border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;}',
+      '#factoryExpensesModal .fe-del:hover{color:#ef4444;}',
+      '#factoryExpensesModal .fe-additem{display:grid;grid-template-columns:1fr 110px 1fr 30px;gap:6px;align-items:center;padding:8px 10px;background:#fafcff;border-top:1px solid #eef2f7;}',
+      '#factoryExpensesModal .fe-profit-wrap{padding:4px 0 10px;}',
+      '#factoryExpensesModal .fe-profit-label{font-size:13px;color:#64748b;}',
+      '#factoryExpensesModal .fe-profit-value{font-size:28px;font-weight:800;margin-top:2px;}',
+      '#factoryExpensesModal .fe-margin-badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#eef2f7;color:#475569;margin-left:10px;vertical-align:middle;}',
+      '#factoryExpensesModal .fe-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px;}',
+      '#factoryExpensesModal .fe-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;}',
+      '#factoryExpensesModal .fe-card-label{font-size:13px;color:#64748b;}',
+      '#factoryExpensesModal .fe-card-value{font-size:18px;font-weight:700;color:#0f172a;margin-top:4px;}'
+    ].join('');
+    var st = document.createElement('style');
+    st.id = 'fe-styles';
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
+  // ---- 모달 셸 생성 (1회). 헤더/탭/패널은 feBuildScaffold가 채움 --------
   function ensureModal() {
     if (document.getElementById(MODAL_ID)) return;
+    injectStyles();
 
     var overlay = document.createElement('div');
     overlay.id = MODAL_ID;
@@ -29,22 +88,15 @@
       'display:none; align-items:center; justify-content:center; z-index:1001;';
 
     overlay.innerHTML =
-      '<div class="modal-content" style="width:600px; padding:30px; border-radius:12px; position:relative;">' +
-        '<button type="button" data-fe-close="1" ' +
-          'style="position:absolute; right:20px; top:20px; border:none; background:none; font-size:20px; cursor:pointer;">X</button>' +
-        '<h3><svg class="icon" aria-hidden="true"><use href="#i-building-2"/></svg> 공장매입</h3>' +
-        '<div id="factoryExpensesRoot" style="padding:4px 0; font-size:13px; color:#64748b;">' +
-          // 실제 지출 UI는 다음 태스크에서 이 컨테이너에 채운다.
-        '</div>' +
+      '<div class="modal-content" style="width:640px; max-width:96vw; max-height:90vh; overflow:auto; padding:0; border-radius:12px; position:relative;">' +
+        '<div id="factoryExpensesRoot"></div>' +
       '</div>';
 
     document.body.appendChild(overlay);
 
-    // 닫기: X 버튼 + 오버레이 바깥 클릭
+    // 닫기: 오버레이 바깥 클릭 (헤더 X는 feBuildScaffold에서 바인딩)
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay || e.target.getAttribute('data-fe-close') === '1') {
-        closeFactoryExpenses();
-      }
+      if (e.target === overlay) closeFactoryExpenses();
     });
   }
 
@@ -389,6 +441,7 @@
 
   var state = {
     ym: null,
+    tab: 'fixed',
     fixed: { draftGroups: [], renderGroups: [] },
     extra: { draftGroups: [], renderGroups: [] }
   };
@@ -435,50 +488,87 @@
     }
   }
 
-  // ---- 스캐폴드 (연월바 + 과거편집 배너 + 고정/추가 섹션 + 손익 자리) ----
+  // ---- 월 라벨/이동 -------------------------------------------
+  function feYmLabel(ym) { var p = ym.split('-'); return p[0] + '년 ' + Number(p[1]) + '월'; }
+  function feSyncYmLabel() {
+    var l = document.getElementById('fe-ym-label');
+    if (l) l.textContent = feYmLabel(selYm());
+  }
+  function feShiftYm(delta) {
+    var p = selYm().split('-').map(Number);
+    var d = new Date(p[0], p[1] - 1 + delta, 1);
+    var ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var el = document.getElementById('fe-ym');
+    if (el) el.value = ym;
+    feSyncYmLabel();
+    state.fixed.draftGroups = [];
+    state.extra.draftGroups = [];
+    updatePastBanner();
+    feLoadFixed();
+    feLoadExtra();
+    feLoadPnl();
+    feLoadPnlChart();
+  }
+
+  // ---- 탭 전환 (한 번에 한 탭만) ------------------------------
+  function feSwitchTab(name) {
+    if (['fixed', 'extra', 'pnl'].indexOf(name) === -1) name = 'fixed';
+    state.tab = name;
+    ['fixed', 'extra', 'pnl'].forEach(function (t) {
+      var panel = document.getElementById('fe-tab-' + t);
+      var btn = document.getElementById('fe-tabbtn-' + t);
+      if (panel) panel.style.display = (t === name) ? 'block' : 'none';
+      if (btn) btn.className = 'fe-tab' + (t === name ? ' fe-tab-active' : '');
+    });
+  }
+
+  // ---- 스캐폴드 (헤더 + 탭 세그먼트 + 패널 3개) ------------------
   function feBuildScaffold() {
     var root = document.getElementById('factoryExpensesRoot');
     if (!root) return;
     if (document.getElementById('fe-ym')) return; // 이미 생성됨
 
     root.innerHTML =
-      '<div id="fe-ym-bar" style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">' +
-        '<label style="font-weight:700; font-size:13px;">연월</label>' +
-        '<input type="month" id="fe-ym" style="width:150px; max-width:150px; flex:0 0 auto; box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:13px;">' +
-      '</div>' +
-      '<div id="fe-pastedit-banner"></div>' +
-      '<div id="fe-section-fixed" class="chart-container" style="margin-bottom:14px;">' +
-        '<div style="font-weight:700; margin-bottom:10px;">' +
-          '<svg class="icon" aria-hidden="true"><use href="#i-building-2"/></svg> 고정지출' +
+      // 헤더: 제목 + 월이동(◀ 라벨 ▶) + 닫기
+      '<div class="fe-header">' +
+        '<span class="fe-title">공장매입</span>' +
+        '<div class="fe-monthnav">' +
+          '<button type="button" class="fe-navbtn" id="fe-ym-prev" aria-label="이전 달">&#9664;</button>' +
+          '<span class="fe-ym-label" id="fe-ym-label"></span>' +
+          '<button type="button" class="fe-navbtn" id="fe-ym-next" aria-label="다음 달">&#9654;</button>' +
         '</div>' +
-        '<div id="fe-fixed-body"></div>' +
+        '<button type="button" class="fe-close" id="fe-close" aria-label="닫기">X</button>' +
+        '<input type="hidden" id="fe-ym">' +
       '</div>' +
-      '<div id="fe-section-extra" class="chart-container" style="margin-bottom:14px;">' +
-        '<div style="font-weight:700; margin-bottom:10px;">' +
-          '<svg class="icon" aria-hidden="true"><use href="#i-credit-card"/></svg> 추가지출' +
-        '</div>' +
-        '<div id="fe-extra-body"></div>' +
+      // 탭 세그먼트
+      '<div class="fe-tabs">' +
+        '<button type="button" class="fe-tab" id="fe-tabbtn-fixed">고정지출</button>' +
+        '<button type="button" class="fe-tab" id="fe-tabbtn-extra">추가지출</button>' +
+        '<button type="button" class="fe-tab" id="fe-tabbtn-pnl">손익</button>' +
       '</div>' +
-      '<div id="fe-section-pnl" class="chart-container">' +
-        '<div style="font-weight:700; margin-bottom:10px;">' +
-          '<svg class="icon" aria-hidden="true"><use href="#i-bar-chart-2"/></svg> 월별 손익' +
+      '<div class="fe-body">' +
+        '<div id="fe-pastedit-banner"></div>' +
+        '<div id="fe-tab-fixed" class="fe-panel"><div id="fe-fixed-body"></div></div>' +
+        '<div id="fe-tab-extra" class="fe-panel" style="display:none;"><div id="fe-extra-body"></div></div>' +
+        '<div id="fe-tab-pnl" class="fe-panel" style="display:none;">' +
+          '<div id="fe-pnl-body"></div>' +
+          '<canvas id="fe-pnl-chart" style="max-height:260px; width:100%; margin-top:14px;"></canvas>' +
+          '<div id="fe-pnl-chart-msg" style="color:#b91c1c; font-size:13px; margin-top:6px;"></div>' +
         '</div>' +
-        '<div id="fe-pnl-body"></div>' +
-        '<canvas id="fe-pnl-chart" style="max-height:260px; width:100%; margin-top:14px;"></canvas>' +
-        '<div id="fe-pnl-chart-msg" style="color:#b91c1c; font-size:13px; margin-top:6px;"></div>' +
       '</div>';
 
     var ymEl = document.getElementById('fe-ym');
     ymEl.value = curYm();
-    ymEl.addEventListener('change', function () {
-      state.fixed.draftGroups = [];
-      state.extra.draftGroups = [];
-      updatePastBanner();
-      feLoadFixed();
-      feLoadExtra();
-      feLoadPnl();
-      feLoadPnlChart();
+    feSyncYmLabel();
+
+    document.getElementById('fe-ym-prev').addEventListener('click', function () { feShiftYm(-1); });
+    document.getElementById('fe-ym-next').addEventListener('click', function () { feShiftYm(1); });
+    document.getElementById('fe-close').addEventListener('click', function () {
+      if (typeof window.closeFactoryExpenses === 'function') window.closeFactoryExpenses();
     });
+    document.getElementById('fe-tabbtn-fixed').addEventListener('click', function () { feSwitchTab('fixed'); });
+    document.getElementById('fe-tabbtn-extra').addEventListener('click', function () { feSwitchTab('extra'); });
+    document.getElementById('fe-tabbtn-pnl').addEventListener('click', function () { feSwitchTab('pnl'); });
 
     var fb = document.getElementById('fe-fixed-body');
     fb.addEventListener('click', function (e) { feOnClick(e, 'fixed'); });
@@ -486,6 +576,8 @@
     var xb = document.getElementById('fe-extra-body');
     xb.addEventListener('click', function (e) { feOnClick(e, 'extra'); });
     xb.addEventListener('change', function (e) { feOnChange(e, 'extra'); });
+
+    feSwitchTab(state.tab || 'fixed');
   }
 
   // ---- 고정지출 조회(유효 세트 + carry-forward) ------------------
@@ -529,7 +621,7 @@
     renderSection('fixed', body, setRows, editable, {
       totalLabel: '고정지출 합계',
       bannerHtml: bannerHtml,
-      emptyMsg: '등록된 고정지출이 없습니다. 아래에서 그룹을 추가해 시작하세요.'
+      emptyMsg: '등록된 고정지출이 없습니다. 위에서 그룹을 추가해 시작하세요.'
     });
   }
 
@@ -555,7 +647,8 @@
     renderSection('extra', body, res.data || [], true, {
       totalLabel: '추가지출 합계',
       bannerHtml: '',
-      emptyMsg: '등록된 추가지출이 없습니다. 아래에서 그룹을 추가해 시작하세요.'
+      introNote: '이 달에만 들어가는 일회성 지출입니다.',
+      emptyMsg: '등록된 추가지출이 없습니다. 위에서 그룹을 추가해 시작하세요.'
     });
   }
 
@@ -598,23 +691,27 @@
   }
 
   function renderPnl(rev, fixedT, extraT, totalExp, profit, margin) {
+    // totalExp는 카드에는 직접 안 쓰지만(고정·추가로 분해) 시그니처 유지.
     var profitColor = profit < 0 ? 'var(--danger)' : (profit > 0 ? 'var(--success)' : 'var(--secondary)');
-    function line(label, valueHtml, o) {
-      o = o || {};
-      return '<div style="display:flex; justify-content:space-between; padding:6px 12px; font-size:13px;' +
-        (o.border ? ' border-top:1px solid #e2e8f0;' : '') +
-        (o.strong ? ' font-weight:700; font-size:14px;' : '') + '">' +
-        '<span>' + label + '</span>' +
-        '<span style="' + (o.color ? 'color:' + o.color + ';' : '') + '">' + valueHtml + '</span>' +
-      '</div>';
+    var label = feYmLabel(selYm());
+
+    function card(lbl, val) {
+      return '<div class="fe-card"><div class="fe-card-label">' + lbl + '</div>' +
+        '<div class="fe-card-value">' + val + '</div></div>';
     }
+
     return '' +
-      line('매출', fmtWon(rev)) +
-      line('고정지출', fmtWon(fixedT)) +
-      line('추가지출', fmtWon(extraT)) +
-      line('총지출', fmtWon(totalExp), { border: true }) +
-      line('영업이익', fmtWon(profit), { border: true, strong: true, color: profitColor }) +
-      line('이익률', margin, { strong: true, color: profitColor });
+      '<div class="fe-profit-wrap">' +
+        '<div class="fe-profit-label">' + label + ' 영업이익</div>' +
+        '<div class="fe-profit-value" style="color:' + profitColor + ';">' + fmtWon(profit) +
+          '<span class="fe-margin-badge">이익률 ' + margin + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="fe-cards">' +
+        card('매출', fmtWon(rev)) +
+        card('고정지출', fmtWon(fixedT)) +
+        card('추가지출', fmtWon(extraT)) +
+      '</div>';
   }
 
   // ---- 상세 막대그래프 (최근 12개월, 매출/지출/영업이익) ----------
@@ -729,64 +826,69 @@
 
     var html = opts.bannerHtml || '';
 
-    // (a) 요약 줄 — 합계 (섹션 맨 위, 한 곳만). grand는 전 항목 합.
+    if (opts.introNote) {
+      html += '<div class="fe-intro">' + esc(opts.introNote) + '</div>';
+    }
+
     var grand = setRows.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
-    html += '<div style="display:flex; justify-content:space-between; font-weight:700; padding:8px 12px; margin-bottom:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:14px;"><span>' + opts.totalLabel + '</span><span>' + fmtWon(grand) + '</span></div>';
 
+    // (a) 그룹 추가 — 첫 동작, 상단(유일 액센트 채움 버튼)
     if (editable) {
-      // (b) 그룹 추가 — 그룹/항목 목록 최상단
-      html += '<div style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">' +
-        '<input id="fe-new-group-' + kind + '" placeholder="새 그룹 이름 (예: 인건비)" style="flex:1; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px;">' +
-        '<button class="btn btn-neutral" data-fe-act="add-group" style="padding:6px 12px; font-size:12px;">그룹 추가</button>' +
-      '</div>';
-
-      // (c) 그룹 없이 바로 항목 추가 (group_name 기본값 '기타'로 insert)
-      html += '<div data-fe-miscadd="1" style="display:flex; gap:6px; padding:8px 12px; margin-bottom:10px; background:#f0f7ff; border:1px solid #dbeafe; border-radius:8px; align-items:center; flex-wrap:wrap;">' +
-        '<input class="fe-mi-name" placeholder="항목 이름" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
-        '<input class="fe-mi-amount" type="number" placeholder="금액" style="flex:1; min-width:80px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px; text-align:right;">' +
-        '<input class="fe-mi-note" placeholder="비고(선택)" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
-        '<button class="btn btn-save" data-fe-act="add-item-misc" style="padding:5px 10px; font-size:12px;">항목 추가</button>' +
+      html += '<div class="fe-addbox">' +
+        '<div class="fe-guide">1. 먼저 그룹을 만드세요</div>' +
+        '<div class="fe-addrow">' +
+          '<input id="fe-new-group-' + kind + '" class="fe-input fe-grow" placeholder="그룹 이름 (예: 인건비, 임대료, 공과금, 기타)">' +
+          '<button type="button" class="fe-btn-accent" data-fe-act="add-group">그룹 추가</button>' +
+        '</div>' +
       '</div>';
     }
 
-    // (d) 그룹/항목 목록
+    // (b) 합계 줄 (오른쪽 정렬)
+    html += '<div class="fe-total">' +
+      '<span>' + (editable ? '2. 그룹에 항목을 넣으세요' : '') + '</span>' +
+      '<span>' + opts.totalLabel + ' <b>' + fmtWon(grand) + '</b></span>' +
+    '</div>';
+
+    // (c) 그룹 목록
     if (order.length === 0) {
-      html += '<div style="color:#64748b; padding:8px 0; font-size:13px;">' + opts.emptyMsg + '</div>';
+      html += '<div class="fe-empty">' + opts.emptyMsg + '</div>';
     }
 
     order.forEach(function (g, gi) {
       var items = map[g];
       var sub = items.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
 
-      html += '<div style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; overflow:hidden;">';
-      html += '<div style="background:#f8fafc; padding:8px 12px; font-weight:700; font-size:13px; display:flex; justify-content:space-between;"><span>' + esc(g) + '</span><span>' + fmtWon(sub) + '</span></div>';
-      html += '<table class="admin-table" style="width:100%; font-size:13px;"><tbody>';
+      html += '<div class="fe-groupbox">';
+      html += '<div class="fe-grp-head"><span>' + esc(g) + '</span><span class="fe-grp-sub">' + fmtWon(sub) + '</span></div>';
+
+      if (items.length === 0) {
+        html += '<div class="fe-grp-empty">항목을 추가하세요</div>';
+      }
 
       items.forEach(function (r) {
         if (editable) {
-          html += '<tr>' +
-            '<td style="padding:4px 8px;"><input data-fe-act="upd-item" data-id="' + r.id + '" data-field="name" value="' + esc(r.name) + '" style="width:100%; box-sizing:border-box;"></td>' +
-            '<td style="padding:4px 8px; width:120px;"><input data-fe-act="upd-item" data-id="' + r.id + '" data-field="amount" type="number" value="' + Number(r.amount || 0) + '" style="width:100%; box-sizing:border-box; text-align:right;"></td>' +
-            '<td style="padding:4px 8px;"><input data-fe-act="upd-item" data-id="' + r.id + '" data-field="note" value="' + esc(r.note) + '" placeholder="비고" style="width:100%; box-sizing:border-box;"></td>' +
-            '<td style="padding:4px 8px; width:48px;"><button class="btn btn-danger" data-fe-act="del-item" data-id="' + r.id + '" style="padding:2px 6px; font-size:11px;">삭제</button></td>' +
-          '</tr>';
+          html += '<div class="fe-item-row">' +
+            '<input class="fe-cell-input" data-fe-act="upd-item" data-id="' + r.id + '" data-field="name" value="' + esc(r.name) + '">' +
+            '<input class="fe-cell-input fe-amount" data-fe-act="upd-item" data-id="' + r.id + '" data-field="amount" type="number" value="' + Number(r.amount || 0) + '">' +
+            '<input class="fe-cell-input" data-fe-act="upd-item" data-id="' + r.id + '" data-field="note" value="' + esc(r.note) + '" placeholder="비고">' +
+            '<button type="button" class="fe-del" data-fe-act="del-item" data-id="' + r.id + '" aria-label="삭제">&#215;</button>' +
+          '</div>';
         } else {
-          html += '<tr>' +
-            '<td style="padding:4px 8px;">' + esc(r.name) + '</td>' +
-            '<td style="padding:4px 8px; text-align:right; width:120px;">' + fmtWon(r.amount) + '</td>' +
-            '<td style="padding:4px 8px; color:#64748b;">' + esc(r.note) + '</td>' +
-          '</tr>';
+          html += '<div class="fe-item-row">' +
+            '<span class="fe-item-name">' + esc(r.name) + '</span>' +
+            '<span class="fe-amount">' + fmtWon(r.amount) + '</span>' +
+            '<span class="fe-item-note">' + esc(r.note) + '</span>' +
+            '<span></span>' +
+          '</div>';
         }
       });
 
-      html += '</tbody></table>';
-
       if (editable) {
-        html += '<div data-fe-additem="' + gi + '" style="display:flex; gap:6px; padding:8px 12px; background:#f0f7ff; align-items:center; flex-wrap:wrap;">' +
-          '<input class="fe-ai-name" placeholder="항목 이름" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
-          '<input class="fe-ai-amount" type="number" placeholder="금액" style="flex:1; min-width:80px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px; text-align:right;">' +
-          '<input class="fe-ai-note" placeholder="비고(선택)" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
-          '<button class="btn btn-save" data-fe-act="add-item" data-group-index="' + gi + '" style="padding:5px 10px; font-size:12px;">항목 추가</button>' +
+        html += '<div class="fe-additem" data-fe-additem="' + gi + '">' +
+          '<input class="fe-input fe-ai-name" placeholder="항목 이름">' +
+          '<input class="fe-input fe-amount fe-ai-amount" type="number" placeholder="금액">' +
+          '<input class="fe-input fe-ai-note" placeholder="비고(선택)">' +
+          '<button type="button" class="fe-btn-quiet" data-fe-act="add-item" data-group-index="' + gi + '" aria-label="항목 추가">+</button>' +
         '</div>';
       }
 
@@ -830,17 +932,6 @@
         cont.querySelector('.fe-ai-name').value,
         cont.querySelector('.fe-ai-amount').value,
         cont.querySelector('.fe-ai-note').value);
-      return;
-    }
-
-    if (act === 'add-item-misc') { // 그룹 없이 추가 → group_name '기타'
-      if (!guardPastEdit(ym)) return;
-      var mc = el.closest('[data-fe-miscadd]');
-      if (!mc) return;
-      await feAddItem(kind, ym, '기타',
-        mc.querySelector('.fe-mi-name').value,
-        mc.querySelector('.fe-mi-amount').value,
-        mc.querySelector('.fe-mi-note').value);
       return;
     }
 
@@ -975,8 +1066,8 @@
         '<div style="font-size:10px;color:var(--secondary);margin-top:-2px;margin-bottom:4px;">지출 반영</div>' +
         '<div class="super-card-value" id="fe-prevProfitValue">계산 중...</div>' +
         '<div style="font-size:12px;margin-top:4px;" id="fe-prevProfitMargin"></div>';
-      // 클릭 시 공장매입 모달을 전월 선택 상태로 오픈 (targetYm로 로드 전 세팅)
-      card.onclick = function () { window.openFactoryExpenses(prevMonthYm()); };
+      // 클릭 시 공장매입 모달을 전월·손익 탭으로 오픈 (targetYm로 로드 전 세팅)
+      card.onclick = function () { window.openFactoryExpenses(prevMonthYm(), 'pnl'); };
     }
 
     var valEl = document.getElementById('fe-prevProfitValue');
@@ -1014,11 +1105,11 @@
 
   // ---- 모달 열기 시 초기화 (기존 open 래핑) ----------------------
   var _openFE = window.openFactoryExpenses;
-  window.openFactoryExpenses = async function (targetYm) {
+  window.openFactoryExpenses = async function (targetYm, targetTab) {
     // (1) 모달 표시 + #factoryExpensesRoot 생성 (동기)
     if (typeof _openFE === 'function') _openFE();
 
-    // (2) 스캐폴드는 동기로 즉시 주입 → 첫 클릭에도 최소 UI(연월·섹션·항목추가)가
+    // (2) 스캐폴드는 동기로 즉시 주입 → 첫 클릭에도 최소 UI(헤더·탭·패널)가
     //     바로 보임. 이미 있으면 재주입 안 함(멱등). 데이터 로드는 아래서 async로.
     feBuildScaffold();
 
@@ -1029,12 +1120,16 @@
       if (targetYm) ymEl.value = targetYm;
       else if (!ymEl.value) ymEl.value = curYm();
     }
+    feSyncYmLabel();
+
+    // (4) 탭 세팅 (카드 경로는 'pnl', 메뉴는 기본 'fixed')
+    feSwitchTab(targetTab || 'fixed');
 
     state.fixed.draftGroups = [];
     state.extra.draftGroups = [];
     updatePastBanner();
 
-    // (4) 열 때마다 항상 전 섹션 로드 (첫 클릭이든 N번째든 항상 채워짐)
+    // (5) 열 때마다 항상 전 섹션 로드 (첫 클릭이든 N번째든 항상 채워짐)
     await feLoadFixed();
     await feLoadExtra();
     await feLoadPnl();
