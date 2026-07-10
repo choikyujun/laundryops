@@ -444,7 +444,7 @@
     root.innerHTML =
       '<div id="fe-ym-bar" style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">' +
         '<label style="font-weight:700; font-size:13px;">연월</label>' +
-        '<input type="month" id="fe-ym" style="padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:13px;">' +
+        '<input type="month" id="fe-ym" style="width:150px; max-width:150px; flex:0 0 auto; box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:13px;">' +
       '</div>' +
       '<div id="fe-pastedit-banner"></div>' +
       '<div id="fe-section-fixed" class="chart-container" style="margin-bottom:14px;">' +
@@ -729,8 +729,18 @@
 
     var html = opts.bannerHtml || '';
 
-    // 그룹 없이 바로 항목 추가 (group_name 기본값 '기타'로 insert)
+    // (a) 요약 줄 — 합계 (섹션 맨 위, 한 곳만). grand는 전 항목 합.
+    var grand = setRows.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
+    html += '<div style="display:flex; justify-content:space-between; font-weight:700; padding:8px 12px; margin-bottom:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:14px;"><span>' + opts.totalLabel + '</span><span>' + fmtWon(grand) + '</span></div>';
+
     if (editable) {
+      // (b) 그룹 추가 — 그룹/항목 목록 최상단
+      html += '<div style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">' +
+        '<input id="fe-new-group-' + kind + '" placeholder="새 그룹 이름 (예: 인건비)" style="flex:1; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px;">' +
+        '<button class="btn btn-neutral" data-fe-act="add-group" style="padding:6px 12px; font-size:12px;">그룹 추가</button>' +
+      '</div>';
+
+      // (c) 그룹 없이 바로 항목 추가 (group_name 기본값 '기타'로 insert)
       html += '<div data-fe-miscadd="1" style="display:flex; gap:6px; padding:8px 12px; margin-bottom:10px; background:#f0f7ff; border:1px solid #dbeafe; border-radius:8px; align-items:center; flex-wrap:wrap;">' +
         '<input class="fe-mi-name" placeholder="항목 이름" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
         '<input class="fe-mi-amount" type="number" placeholder="금액" style="flex:1; min-width:80px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px; text-align:right;">' +
@@ -739,15 +749,14 @@
       '</div>';
     }
 
+    // (d) 그룹/항목 목록
     if (order.length === 0) {
       html += '<div style="color:#64748b; padding:8px 0; font-size:13px;">' + opts.emptyMsg + '</div>';
     }
 
-    var grand = 0;
     order.forEach(function (g, gi) {
       var items = map[g];
       var sub = items.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
-      grand += sub;
 
       html += '<div style="border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; overflow:hidden;">';
       html += '<div style="background:#f8fafc; padding:8px 12px; font-weight:700; font-size:13px; display:flex; justify-content:space-between;"><span>' + esc(g) + '</span><span>' + fmtWon(sub) + '</span></div>';
@@ -783,15 +792,6 @@
 
       html += '</div>';
     });
-
-    html += '<div style="display:flex; justify-content:space-between; font-weight:700; padding:8px 12px; border-top:2px solid #e2e8f0; margin-top:4px; font-size:14px;"><span>' + opts.totalLabel + '</span><span>' + fmtWon(grand) + '</span></div>';
-
-    if (editable) {
-      html += '<div style="display:flex; gap:6px; margin-top:12px; align-items:center;">' +
-        '<input id="fe-new-group-' + kind + '" placeholder="새 그룹 이름 (예: 인건비)" style="flex:1; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px;">' +
-        '<button class="btn btn-neutral" data-fe-act="add-group" style="padding:6px 12px; font-size:12px;">그룹 추가</button>' +
-      '</div>';
-    }
 
     body.innerHTML = html;
   }
