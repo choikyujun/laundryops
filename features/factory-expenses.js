@@ -934,10 +934,11 @@
 
       html += '<div class="fe-groupbox' + (opts.unapplied ? ' fe-muted' : '') + '">';
       html += '<div class="fe-grp-head">' +
-        '<span class="fe-grp-left"><span class="fe-grp-title">' + esc(g) + '</span>' +
+        '<span class="fe-grp-left">' + moveBtns +
+          '<span class="fe-grp-title">' + esc(g) + '</span>' +
           (editable ? '<button type="button" class="fe-additem-link" data-fe-act="toggle-additem" data-group-index="' + gi + '">+ 항목 추가</button>' : '') +
         '</span>' +
-        '<span class="fe-grp-right">' + moveBtns +
+        '<span class="fe-grp-right">' +
           '<span class="fe-grp-sub">' + fmtWon(sub) +
             ' <span class="fe-pct-danger">매출의 ' + fePct(sub, revenue) + '</span>' +
           '</span>' +
