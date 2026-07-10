@@ -725,6 +725,17 @@
     state[kind].renderGroups = order.slice();
 
     var html = opts.bannerHtml || '';
+
+    // 그룹 없이 바로 항목 추가 (group_name 기본값 '기타'로 insert)
+    if (editable) {
+      html += '<div data-fe-miscadd="1" style="display:flex; gap:6px; padding:8px 12px; margin-bottom:10px; background:#f0f7ff; border:1px solid #dbeafe; border-radius:8px; align-items:center; flex-wrap:wrap;">' +
+        '<input class="fe-mi-name" placeholder="항목 이름" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
+        '<input class="fe-mi-amount" type="number" placeholder="금액" style="flex:1; min-width:80px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px; text-align:right;">' +
+        '<input class="fe-mi-note" placeholder="비고(선택)" style="flex:2; min-width:100px; padding:5px 7px; border:1px solid #cbd5e1; border-radius:6px;">' +
+        '<button class="btn btn-save" data-fe-act="add-item-misc" style="padding:5px 10px; font-size:12px;">항목 추가</button>' +
+      '</div>';
+    }
+
     if (order.length === 0) {
       html += '<div style="color:#64748b; padding:8px 0; font-size:13px;">' + opts.emptyMsg + '</div>';
     }
@@ -816,6 +827,17 @@
         cont.querySelector('.fe-ai-name').value,
         cont.querySelector('.fe-ai-amount').value,
         cont.querySelector('.fe-ai-note').value);
+      return;
+    }
+
+    if (act === 'add-item-misc') { // 그룹 없이 추가 → group_name '기타'
+      if (!guardPastEdit(ym)) return;
+      var mc = el.closest('[data-fe-miscadd]');
+      if (!mc) return;
+      await feAddItem(kind, ym, '기타',
+        mc.querySelector('.fe-mi-name').value,
+        mc.querySelector('.fe-mi-amount').value,
+        mc.querySelector('.fe-mi-note').value);
       return;
     }
 
