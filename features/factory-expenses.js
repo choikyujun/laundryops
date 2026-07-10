@@ -45,8 +45,12 @@
       '#factoryExpensesModal .fe-btn-accent:hover{background:#00487d;}',
       '#factoryExpensesModal .fe-btn-quiet{background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:15px;line-height:1;cursor:pointer;height:30px;}',
       '#factoryExpensesModal .fe-btn-quiet:hover{background:#f1f5f9;}',
-      '#factoryExpensesModal .fe-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-size:13px;color:#64748b;}',
+      '#factoryExpensesModal .fe-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;font-size:13px;color:#64748b;}',
+      '#factoryExpensesModal .fe-total-left{white-space:nowrap;}',
+      '#factoryExpensesModal .fe-total-right{text-align:right;}',
       '#factoryExpensesModal .fe-total b{font-size:15px;color:#0f172a;font-weight:800;}',
+      '#factoryExpensesModal .fe-pct-accent{color:#005b9f;font-weight:700;white-space:nowrap;}',
+      '#factoryExpensesModal .fe-pct-danger{color:var(--text-danger, var(--danger, #dc2626));font-weight:700;white-space:nowrap;font-size:12px;}',
       '#factoryExpensesModal .fe-empty{color:#64748b;padding:10px 2px;font-size:13px;}',
       '#factoryExpensesModal .fe-groupbox{border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;overflow:hidden;}',
       '#factoryExpensesModal .fe-grp-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-weight:700;font-size:13px;color:#0f172a;}',
@@ -460,6 +464,25 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  // 매출 대비 비율. 매출 0/미상이면 '—'.
+  function fePct(part, revenue) {
+    if (!revenue || revenue <= 0) return '—';
+    return (part / revenue * 100).toFixed(1) + '%';
+  }
+  // 그 달 매출(정정 유틸) — ym별 캐시(지출 편집으론 안 바뀜, open마다 초기화).
+  var revCache = {};
+  async function feMonthRevenue(ym) {
+    if (revCache[ym] != null) return revCache[ym];
+    var rev = 0;
+    if (typeof window.computeMonthlyRevenue === 'function') {
+      var out = await window.computeMonthlyRevenue({
+        factoryId: currentFactoryId, fromYm: ym, toYm: ym, hotelFilter: 'all'
+      });
+      rev = Number((out && out.trend && out.trend[ym]) || 0);
+    }
+    revCache[ym] = rev;
+    return rev;
+  }
   // 편집/월전환 후 재조회: 해당 섹션 + 손익 재계산(지출 변화 즉시 반영)
   function reload(kind) {
     return Promise.all([kind === 'fixed' ? feLoadFixed() : feLoadExtra(), feLoadPnl(), feLoadPnlChart()]);
@@ -622,9 +645,12 @@
         '</div>';
     }
 
+    var revenue = await feMonthRevenue(ym);
     renderSection('fixed', body, setRows, editable, {
       totalLabel: '고정지출 합계',
       bannerHtml: bannerHtml,
+      revenue: revenue,
+      guide: '1. 먼저 그룹을 만드세요',
       emptyMsg: '등록된 고정지출이 없습니다. 위에서 그룹을 추가해 시작하세요.'
     });
   }
@@ -648,10 +674,12 @@
       return;
     }
 
+    var revenueX = await feMonthRevenue(ym);
     renderSection('extra', body, res.data || [], true, {
       totalLabel: '추가지출 합계',
       bannerHtml: '',
-      introNote: '이 달에만 들어가는 일회성 지출입니다.',
+      revenue: revenueX,
+      guide: '이 달에만 들어가는 일회성 지출입니다.',
       emptyMsg: '등록된 추가지출이 없습니다. 위에서 그룹을 추가해 시작하세요.'
     });
   }
@@ -663,14 +691,8 @@
     var ym = selYm();
     body.innerHTML = '<div style="text-align:center; color:#64748b; padding:10px; font-size:13px;">계산 중...</div>';
     try {
-      // 매출 — 정정 매출 유틸(차감 제외·정액제 가산). trend[ym] 없으면 0.
-      var rev = 0;
-      if (typeof window.computeMonthlyRevenue === 'function') {
-        var out = await window.computeMonthlyRevenue({
-          factoryId: currentFactoryId, fromYm: ym, toYm: ym, hotelFilter: 'all'
-        });
-        rev = Number((out && out.trend && out.trend[ym]) || 0);
-      }
+      // 매출 — 정정 매출 유틸(차감 제외·정액제 가산). ym 캐시 재사용.
+      var rev = await feMonthRevenue(ym);
 
       // 지출 — RPC factory_expense_month (테이블 반환 → 배열)
       var rpc = await window.mySupabase.rpc('factory_expense_month', {
@@ -696,7 +718,8 @@
 
   function renderPnl(rev, fixedT, extraT, totalExp, profit, margin) {
     // totalExp는 카드에는 직접 안 쓰지만(고정·추가로 분해) 시그니처 유지.
-    var profitColor = profit < 0 ? 'var(--danger)' : (profit > 0 ? 'var(--success)' : 'var(--secondary)');
+    var profitColor = profit < 0 ? 'var(--text-danger, var(--danger))'
+      : (profit > 0 ? 'var(--text-success, var(--success))' : 'var(--secondary)');
     var label = feYmLabel(selYm());
 
     function card(lbl, val) {
@@ -830,16 +853,13 @@
 
     var html = opts.bannerHtml || '';
 
-    if (opts.introNote) {
-      html += '<div class="fe-intro">' + esc(opts.introNote) + '</div>';
-    }
-
     var grand = setRows.reduce(function (s, r) { return s + Number(r.amount || 0); }, 0);
+    var revenue = Number(opts.revenue || 0);
 
-    // (a) 그룹 추가 — 첫 동작, 상단(유일 액센트 채움 버튼)
+    // (a) 그룹 추가 — 첫 동작, 상단(유일 액센트 채움 버튼). 안내는 탭별.
     if (editable) {
       html += '<div class="fe-addbox">' +
-        '<div class="fe-guide">1. 먼저 그룹을 만드세요</div>' +
+        '<div class="fe-guide">' + esc(opts.guide || '1. 먼저 그룹을 만드세요') + '</div>' +
         '<div class="fe-addrow">' +
           '<input id="fe-new-group-' + kind + '" class="fe-input fe-grow" placeholder="그룹 이름 (예: 인건비, 임대료, 공과금, 기타)">' +
           '<button type="button" class="fe-btn-accent" data-fe-act="add-group">그룹 추가</button>' +
@@ -847,10 +867,12 @@
       '</div>';
     }
 
-    // (b) 합계 줄 (오른쪽 정렬)
+    // (b) 합계 줄: 왼쪽 "매출 N원 기준", 오른쪽 "합계 N원 · 매출의 XX%"(비율 액센트)
     html += '<div class="fe-total">' +
-      '<span>' + (editable ? '2. 그룹에 항목을 넣으세요' : '') + '</span>' +
-      '<span>' + opts.totalLabel + ' <b>' + fmtWon(grand) + '</b></span>' +
+      '<span class="fe-total-left">매출 ' + fmtWon(revenue) + ' 기준</span>' +
+      '<span class="fe-total-right">' + opts.totalLabel + ' <b>' + fmtWon(grand) + '</b>' +
+        ' <span class="fe-pct-accent">· 매출의 ' + fePct(grand, revenue) + '</span>' +
+      '</span>' +
     '</div>';
 
     // (c) 그룹 목록
@@ -867,7 +889,9 @@
         '<span class="fe-grp-left"><span class="fe-grp-title">' + esc(g) + '</span>' +
           (editable ? '<button type="button" class="fe-additem-link" data-fe-act="toggle-additem" data-group-index="' + gi + '">+ 항목 추가</button>' : '') +
         '</span>' +
-        '<span class="fe-grp-sub">' + fmtWon(sub) + '</span>' +
+        '<span class="fe-grp-sub">' + fmtWon(sub) +
+          ' <span class="fe-pct-danger">매출의 ' + fePct(sub, revenue) + '</span>' +
+        '</span>' +
       '</div>';
 
       if (items.length === 0) {
@@ -1148,6 +1172,7 @@
 
     state.fixed.draftGroups = [];
     state.extra.draftGroups = [];
+    revCache = {}; // 매출 캐시 초기화(열 때마다 신선)
     updatePastBanner();
 
     // (5) 열 때마다 항상 전 섹션 로드 (첫 클릭이든 N번째든 항상 채워짐)
