@@ -9,6 +9,10 @@
     const _hasDrag = typeof window.updateItemNameWithCascade !== 'undefined';
     const _moveTh = _hasDrag ? '<th style="width:28px; text-align:center;">이동</th>' : '';
 
+    // ── 거래명세서 보기 팝업: "인쇄하기(VAT포함)" 버튼용 금액 박제 ──
+    // viewInvoiceDetail이 렌더할 때마다 supplyPrice/vat/총합계를 담아둔다.
+    let _viewInvoiceVat = null;
+
     // ── UI 헬퍼: 단가 입력 폼 위탁/직영 전환 ─────────────────────────
     function _applyConsignmentPriceUI(isC) {
         // simplePriceModal 입력 폼
@@ -523,6 +527,11 @@
         const showConsign = isConsignment && !isHotelView && mergedItems.some(it => it.consignPrice != null);
         const grayBg = !isHotelView ? ' background:#f1f5f9;' : '';
         // 대표 화면에서만 단가·금액 열 회색. 파트너 화면은 빈 문자열 → 음영 없음.
+
+        // [VAT] 인쇄하기(VAT포함) 버튼용 금액 박제 — 최종 합계 기준 1회(Math.floor), 항목별 아님
+        const _vat = Math.floor(supplyPrice * 0.1);
+        _viewInvoiceVat = { supplyPrice, vat: _vat, totalWithVat: supplyPrice + _vat, isSpecial, labelColspan: showConsign ? 4 : 3 };
+
         let reportHtml = '';
 
         if (isSpecial) {
@@ -564,7 +573,7 @@
                 <div style="display:grid !important; grid-template-columns: repeat(2, 1fr) !important; gap:6px !important; align-items:start !important; padding:3px !important; width: 100% !important;">
                     ${categoriesHtml}
                 </div>
-                <div style="margin-top:10px; padding:10px; border:2px solid #000; text-align:right; font-weight:700; font-size:13px; border-radius:8px;">
+                <div id="invDetailVatSpecialBox" style="margin-top:10px; padding:10px; border:2px solid #000; text-align:right; font-weight:700; font-size:13px; border-radius:8px;">
                     공급가: ₩ ${supplyPrice.toLocaleString()}
                 </div>`;
         } else {
@@ -592,7 +601,7 @@
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;${grayBg}">₩ ${(it.price * it.qty).toLocaleString()}</td>
                         </tr>`).join('')}
                     </tbody>
-                    <tfoot>
+                    <tfoot id="invDetailVatFoot">
                         <tr style="font-weight:700; background:#e2e8f0;">
                             <td colspan="${showConsign ? 4 : 3}" style="padding:4px; border:1px solid #cbd5e1; text-align:right;">공급가</td>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">₩ ${supplyPrice.toLocaleString()}</td>
@@ -605,10 +614,62 @@
         reportHtml += `
         <div style="text-align:center; margin-top:10px;">
             <button class="btn btn-neutral" onclick="printInvoiceDetail()" style="padding:10px 30px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 영수증 인쇄</button>
+            <button class="btn btn-neutral" onclick="printInvoiceDetailVat()" style="padding:10px 30px; margin-left:8px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg> 인쇄하기(VAT포함)</button>
         </div>`;
 
         document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
         openModal('invoiceDetailModal');
+    };
+
+    // ── 인쇄하기(VAT포함): 인쇄본에만 부가세(10%)/총 합계 행을 임시로 더해 인쇄 ──
+    // 화면 팝업 표시(공급가만)와 기존 "영수증 인쇄"(printInvoiceDetail)는 건드리지 않는다.
+    // printReport가 #invoiceDetailArea를 동기적으로 clone한 뒤 인쇄하므로,
+    // 임시 행을 추가 → printInvoiceDetail(bank_info 삽입 + printReport) await → finally에서 원복.
+    window.printInvoiceDetailVat = async function () {
+        const info = _viewInvoiceVat;
+        if (!info) { alert('금액 정보를 찾을 수 없습니다.'); return; }
+        const won = (n) => '₩ ' + Number(n || 0).toLocaleString();
+        const added = [];
+        try {
+            if (info.isSpecial) {
+                const box = document.getElementById('invDetailVatSpecialBox');
+                if (box) {
+                    const vatLine = document.createElement('div');
+                    vatLine.className = 'vat-temp-row';
+                    vatLine.style.marginTop = '4px';
+                    vatLine.textContent = '부가세(10%): ' + won(info.vat);
+                    const totLine = document.createElement('div');
+                    totLine.className = 'vat-temp-row';
+                    totLine.style.marginTop = '4px';
+                    totLine.textContent = '총 합계: ' + won(info.totalWithVat);
+                    box.appendChild(vatLine);
+                    box.appendChild(totLine);
+                    added.push(vatLine, totLine);
+                }
+            } else {
+                const foot = document.getElementById('invDetailVatFoot');
+                if (foot) {
+                    const cs = info.labelColspan;
+                    const cellR = 'padding:4px; border:1px solid #cbd5e1; text-align:right;';
+                    const vatTr = document.createElement('tr');
+                    vatTr.className = 'vat-temp-row';
+                    vatTr.style.fontWeight = '700';
+                    vatTr.innerHTML = `<td colspan="${cs}" style="${cellR}">부가세(10%)</td><td style="${cellR}">${won(info.vat)}</td>`;
+                    const totTr = document.createElement('tr');
+                    totTr.className = 'vat-temp-row';
+                    totTr.style.fontWeight = '700';
+                    totTr.style.background = '#e2e8f0';
+                    totTr.innerHTML = `<td colspan="${cs}" style="${cellR}">총 합계</td><td style="${cellR}">${won(info.totalWithVat)}</td>`;
+                    foot.appendChild(vatTr);
+                    foot.appendChild(totTr);
+                    added.push(vatTr, totTr);
+                }
+            }
+            // 기존 인쇄 준비(bank_info 삽입) + printReport clone을 그대로 재사용
+            await window.printInvoiceDetail();
+        } finally {
+            added.forEach((n) => { try { n.remove(); } catch (e) {} });
+        }
     };
 
     // ── B4 save: confirmSendInvoice — display_total_amount 박제 (위탁만) ──
