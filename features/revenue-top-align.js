@@ -6,9 +6,13 @@
   var STYLE_ID = 'revenue-top-align-style';
   if (document.getElementById(STYLE_ID)) return;
 
+  // 금액은 마지막 td에 직접 텍스트("2,700,000원")로 들어감(span 래핑 없음).
+  // 앱 기본 폰트에 tabular figures가 없어 tabular-nums가 무시될 수 있으므로
+  // monospace 폰트 스택으로 숫자 등폭을 보장한다. "원"은 폴백되지만 정렬은 숫자 폭이 결정.
   var css =
     '#adminTopRankingArea table td:last-child {' +
     '  text-align: right;' +
+    '  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;' +
     '  font-variant-numeric: tabular-nums;' +
     '  font-feature-settings: "tnum" 1;' +
     '}';
