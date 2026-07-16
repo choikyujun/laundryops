@@ -552,6 +552,7 @@
         <div class="tab-item" id="tour-tab-hotel" onclick="switchTab(this, 'adminHotel'); window.renderDeliveryGroups && window.renderDeliveryGroups();"><svg class="icon" aria-hidden="true"><use href="#i-handshake"/></svg> 거래처</div>
         <div class="tab-item" id="tour-tab-staff" onclick="switchTab(this, 'adminStaff')"><svg class="icon" aria-hidden="true"><use href="#i-shirt"/></svg> 직원/발행</div>
         <div class="tab-item" onclick="switchTab(this, 'adminSent')"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg> 발송내역</div>
+        <div class="tab-item" onclick="switchTab(this, 'adminCollect'); window.loadHotelPayments();"><svg class="icon" aria-hidden="true"><use href="#i-banknote"/></svg> 입금확인</div>
     </div>
 
     <!-- 관리 툴바 (접이식) -->
@@ -753,6 +754,9 @@
             <div id="adminSentPagination"></div>
         </div>
     </div>
+
+    <!-- 탭: 입금확인 (수금 관리) -->
+    <div id="tab_adminCollect" class="tab-content"></div>
   </div>
 
   <div id="hotelView" class="view">
@@ -1506,6 +1510,7 @@
   <script src="features/factory-expenses.js?v=20260710_13"></script>
   <script src="features/revenue-top-align.js?v=20260710_16"></script>
   <script src="features/consignment-company.js?v=20260716_1"></script>
+  <script src="features/hotel-payments.js?v=20260716_3"></script>
   <script>
   (function(){
     function _syncHotelBoxes(){
