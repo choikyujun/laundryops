@@ -215,7 +215,6 @@
                 const endDay = payer ? payer.end_day : null;
                 const period = periodFor(ym, startDay, endDay);
 
-                const hasUnit = r.members.some(h => h.contract_type !== 'fixed');
                 const name = r.payerType === 'company'
                     ? (companyName[r.payerId] || '(이름 없는 위탁사)')
                     : (r.members[0] ? r.members[0].name : '');
@@ -241,9 +240,9 @@
                     return;
                 }
 
-                // 집계 시점: 단가제 포함 행은 오늘>종료일이어야 집계. 정액제만 있으면 항상.
-                const collectible = hasUnit ? (today > period.end) : true;
-                if (!collectible) {
+                // 집계 시점(계약 유형 무관 단일 규칙): 오늘 > 종료일이어야 집계.
+                // 기간이 끝나지 않았으면 정액제도 아직 청구 대상 아님 → '집계 전'(빈칸).
+                if (!(today > period.end)) {
                     row.state = 'pending';            // 종료일 이후 집계 → 지금은 빈칸
                     rows.push(row);
                     return;
