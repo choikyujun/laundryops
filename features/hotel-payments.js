@@ -89,6 +89,10 @@
 
     // 최신 요청만 렌더(월 화살표 연타 race 방지)
     let _reqSeq = 0;
+    // 위탁사 행 펼침 상태(companyId) — 렌더/월 이동 사이 유지
+    const _expanded = new Set();
+    // 마지막 렌더 데이터 캐시(펼치기 토글 시 재조회 없이 재렌더)
+    let _lastRender = null;
 
     // ── invoices 기간 합계: 공장 전체를 [minStart,maxEnd] 한 번에 페이지네이션 조회 후
     //    호텔별 개별 창(window)으로 필터. 호텔 수와 무관하게 쿼리 P회(1000행 페이지). ──
@@ -229,6 +233,7 @@
                     billed: null,
                     state: 'ok'
                 };
+                row._members = r.members; // 자식 행(펼치기) 렌더용 — 상태와 무관하게 보관
 
                 if (!period) {
                     row.state = 'no-cycle';           // 주기 미설정 → 청구액 빈칸
@@ -244,17 +249,12 @@
                     return;
                 }
 
-                // 공급가 합: 단가제=기간 명세서 합(invoices), 정액제=fixed_amount(ym>=created월)
-                row._fixedSupply = 0;
+                // 단가제 멤버의 기간 창 등록(invoices 조회용). 정액제는 fixed_amount로 별도 처리.
                 r.members.forEach(h => {
-                    if (h.contract_type === 'fixed') {
-                        const createdMonth = h.created_at ? String(h.created_at).substring(0, 7) : '2000-01';
-                        row._fixedSupply += (ym >= createdMonth) ? Number(h.fixed_amount || 0) : 0;
-                    } else {
+                    if (h.contract_type !== 'fixed') {
                         windowByHotel[h.id] = { start: period.start, end: period.end };
                     }
                 });
-                row._unitHotelIds = r.members.filter(h => h.contract_type !== 'fixed').map(h => h.id);
                 rows.push(row);
             });
 
@@ -272,12 +272,27 @@
                 if (seq !== _reqSeq) return;
             }
 
-            // 5) 행 청구액 확정: supplySum = 정액분 + 단가분, 청구액 = supplySum + floor(×0.1)
+            // 5) 행 청구액 확정 + 자식(호텔별) 청구액.
+            //    행 청구액 = supplySum + floor(×0.1)  (VAT 합계 기준 1회)
+            //    자식 청구액 = 호텔 supply + floor(supply×0.1)  (호텔별 개별 floor)
+            //    → 자식 합이 행 청구액과 1~N원 어긋날 수 있음(참고용).
             rows.forEach(row => {
                 if (row.state !== 'ok') return;
-                let supplySum = row._fixedSupply || 0;
-                (row._unitHotelIds || []).forEach(hid => { supplySum += Number(supplyByHotel[hid] || 0); });
+                let supplySum = 0;
+                const children = [];
+                (row._members || []).forEach(h => {
+                    let s;
+                    if (h.contract_type === 'fixed') {
+                        const createdMonth = h.created_at ? String(h.created_at).substring(0, 7) : '2000-01';
+                        s = (ym >= createdMonth) ? Number(h.fixed_amount || 0) : 0;
+                    } else {
+                        s = Number(supplyByHotel[h.id] || 0);
+                    }
+                    supplySum += s;
+                    children.push({ name: h.name, billed: s + Math.floor(s * 0.1) });
+                });
                 row.billed = supplySum + Math.floor(supplySum * 0.1);
+                row.children = children;
             });
 
             // 6) 정렬: sort_order(태스크 7 드래그) 우선, 없으면 이름 가나다순(거래처 탭 기준)
@@ -287,6 +302,7 @@
             });
 
             if (seq !== _reqSeq) return;
+            _lastRender = { rows: rows, paidByHotel: paidByHotel, paidByCompany: paidByCompany };
             renderRows(rows, paidByHotel, paidByCompany);
 
         } catch (e) {
@@ -337,67 +353,97 @@
         let html = '';
 
         rows.forEach(row => {
-            const payInfo = row.payerType === 'company' ? paidByCompany[row.payerId] : paidByHotel[row.payerId];
+            const isCompany = row.payerType === 'company';
+            const expanded = isCompany && _expanded.has(row.payerId);
+            const payInfo = isCompany ? paidByCompany[row.payerId] : paidByHotel[row.payerId];
             const paid = payInfo ? Number(payInfo.amount || 0) : 0;
 
             // 시작일·종료일 = 일자 select(1~31). 값 변경 즉시 저장 후 재계산.
             const key = row.payerType + '-' + row.payerId;
             const periodText = (row.startDate && row.endDate) ? (mmdd(row.startDate) + ' ~ ' + mmdd(row.endDate)) : '';
+
+            // 거래처 셀: [화살표/빈칸] 이름·라벨(ellipsis) [N곳] [기간]
+            const chevron = isCompany
+                ? `<span style="flex-shrink:0; width:14px; text-align:center; color:var(--secondary,#94a3b8); font-size:11px;">${expanded ? '&#9662;' : '&#9656;'}</span>`
+                : `<span style="flex-shrink:0; width:14px;"></span>`;
+            const countText = isCompany
+                ? `<span style="flex-shrink:0; font-size:11px; ${muted}">${(row._members || []).length}곳</span>`
+                : '';
+            const nameCell = `<td style="text-align:left;"><div style="display:flex; align-items:center; gap:6px; min-width:0;">`
+                + chevron
+                + `<span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelCell(row)}</span>`
+                + countText
+                + (periodText ? `<span style="flex-shrink:0; font-size:11px; ${muted} ${MONO}">${periodText}</span>` : '')
+                + `</div></td>`;
             const startCell = `<td style="text-align:center;">${daySelect('hp-start', key, row.startDay, row.payerType, row.payerId)}</td>`;
-            const endCell = `<td style="text-align:center;">${daySelect('hp-end', key, row.endDay, row.payerType, row.payerId)}` +
-                (periodText ? `<div style="font-size:10px; ${muted} margin-top:3px; ${MONO}">${periodText}</div>` : '') + `</td>`;
+            const endCell = `<td style="text-align:center;">${daySelect('hp-end', key, row.endDay, row.payerType, row.payerId)}</td>`;
 
-            // 미확정 행(주기 미설정 / 집계 전): 청구액 빈칸, 요약 제외. 입금액은 있으면 보존 표시.
+            // 위탁사 행 배경(옅게) + 클릭 토글. 부분입금이면 danger 배경이 우선.
+            let bg = isCompany ? 'var(--surface-1,#f8fafc)' : '';
+            const clickAttr = isCompany ? ` onclick="window._hpToggleCompany('${esc(row.payerId)}')"` : '';
+
+            let bodyCells;
             if (row.state !== 'ok') {
+                // 미확정 행: 청구액 빈칸, 요약 제외. 입금 입력 불가(체크박스 disabled). 기존 입금액은 보존 표시.
                 const billedText = row.state === 'no-cycle' ? '기간 미설정' : '집계 전';
-                html += `<tr>
-                    <td style="text-align:center; ${muted}"></td>
-                    <td style="text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${labelCell(row)}</td>
-                    ${startCell}
-                    ${endCell}
-                    <td style="${moneyTd} ${muted}">${billedText}</td>
-                    <td style="${moneyTd} ${muted}">${payInfo ? won(paid) : '-'}</td>
-                    <td style="${moneyTd} ${muted}">-</td>
-                    <td style="text-align:center; ${muted}">-</td>
-                </tr>`;
-                return;
-            }
-
-            const billed = Number(row.billed || 0);
-            const unpaid = Math.max(billed - paid, 0);
-
-            // 요약은 목록 합계와 일치: 입금완료 = min(paid,billed), 미수금 = max(billed-paid,0)
-            sumBilled += billed;
-            sumPaid += Math.min(paid, billed);
-            sumUnpaid += unpaid;
-
-            let rowStyle = '';
-            let paidCell, unpaidCell, doneCell;
-            if (!payInfo || paid <= 0) {
-                paidCell = `<td style="${moneyTd} ${muted}">-</td>`;
-                unpaidCell = `<td style="${moneyTd} color:var(--danger,#dc2626);">${won(unpaid)}</td>`;
-                doneCell = `<td style="text-align:center; color:var(--secondary,#cbd5e1);">-</td>`;
-            } else if (paid < billed) {
-                rowStyle = ' style="background:var(--bg-danger,#fef2f2);"';
-                paidCell = `<td style="${moneyTd}">${won(paid)}</td>`;
-                unpaidCell = `<td style="${moneyTd} color:var(--danger,#dc2626); font-weight:700;">${won(unpaid)}</td>`;
-                doneCell = `<td style="text-align:center; color:var(--secondary,#cbd5e1);">-</td>`;
+                bodyCells = `<td style="${moneyTd} ${muted}">${billedText}</td>`
+                    + `<td style="${moneyTd} ${muted}">${payInfo ? won(paid) : '-'}</td>`
+                    + `<td style="${moneyTd} ${muted}">-</td>`
+                    + `<td style="text-align:center;"><input type="checkbox" disabled title="청구액 집계 후 가능" style="width:16px; height:16px;"></td>`;
             } else {
-                paidCell = `<td style="${moneyTd} color:var(--success,#16a34a);">${won(paid)}</td>`;
-                unpaidCell = `<td style="${moneyTd} ${muted}">0원</td>`;
-                doneCell = `<td style="text-align:center; color:var(--success,#16a34a);"><svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg></td>`;
+                const billed = Number(row.billed || 0);
+                const unpaid = Math.max(billed - paid, 0);
+                sumBilled += billed;
+                sumPaid += Math.min(paid, billed);
+                sumUnpaid += unpaid;
+
+                const completed = paid > 0 && paid >= billed;   // 미수금 0 이하 → 완료
+                const partial = paid > 0 && paid < billed;
+                if (partial) bg = 'var(--bg-danger,#fef2f2)'; // 부분입금 강조 우선
+
+                const pAttr = `data-ptype="${esc(row.payerType)}" data-pid="${esc(row.payerId)}"`;
+                const paidInput = `<input type="text" inputmode="numeric" value="${paid > 0 ? paid.toLocaleString() : ''}" placeholder="0" ${pAttr}`
+                    + ` onclick="event.stopPropagation()" onchange="window._hpSavePaid(this)"`
+                    + ` style="width:100%; height:28px; text-align:right; ${MONO} border:1px solid var(--border,#cbd5e1); border-radius:6px; padding:0 6px; box-sizing:border-box; font-size:12px;${completed ? ' color:var(--success,#16a34a);' : ''}">`;
+                const unpaidCell = completed
+                    ? `<td style="${moneyTd} ${muted}">0원</td>`
+                    : `<td style="${moneyTd} color:var(--danger,#dc2626);${partial ? ' font-weight:700;' : ''}">${won(unpaid)}</td>`;
+                const doneCb = `<input type="checkbox" ${completed ? 'checked' : ''} ${pAttr} data-billed="${billed}"`
+                    + ` onclick="event.stopPropagation()" onchange="window._hpToggleDone(this)"`
+                    + ` style="width:16px; height:16px; cursor:pointer; accent-color:var(--primary,#2563eb);">`;
+                bodyCells = `<td style="${moneyTd}">${won(billed)}</td>`
+                    + `<td>${paidInput}</td>`
+                    + unpaidCell
+                    + `<td style="text-align:center;">${doneCb}</td>`;
             }
 
-            html += `<tr${rowStyle}>
+            const trStyle = (bg ? 'background:' + bg + ';' : '') + (isCompany ? 'cursor:pointer;' : '');
+            html += `<tr${trStyle ? ` style="${trStyle}"` : ''}${clickAttr}>
                 <td style="text-align:center; color:var(--secondary,#cbd5e1);"></td>
-                <td style="text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${labelCell(row)}</td>
+                ${nameCell}
                 ${startCell}
                 ${endCell}
-                <td style="${moneyTd}">${won(billed)}</td>
-                ${paidCell}
-                ${unpaidCell}
-                ${doneCell}
+                ${bodyCells}
             </tr>`;
+
+            // 자식(소속 호텔) 행 — 위탁사 행 펼침 시. 청구액만 참고 표시, 나머지 열 비움.
+            if (isCompany && expanded) {
+                // 미확정 행은 row.children이 없음 → 멤버 이름만, 청구액 빈칸.
+                const kids = row.children || (row._members || []).map(h => ({ name: h.name, billed: null }));
+                kids.forEach(kid => {
+                    const amt = kid.billed == null ? '' : won(kid.billed);
+                    html += `<tr style="background:var(--surface-1,#fbfcfe);">
+                        <td></td>
+                        <td style="text-align:left;"><span style="padding-left:28px; ${muted}">${esc(kid.name)}</span></td>
+                        <td></td>
+                        <td></td>
+                        <td style="${moneyTd} ${muted}">${amt}</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>`;
+                });
+            }
         });
 
         tbody.innerHTML = html;
@@ -411,8 +457,9 @@
         for (let d = 1; d <= 31; d++) {
             opts += `<option value="${d}"${Number(value) === d ? ' selected' : ''}>${d}</option>`;
         }
+        // onclick stopPropagation: 위탁사 행의 select 조작이 행 펼치기 토글을 일으키지 않게.
         return `<select id="${prefix}-${key}" data-key="${esc(key)}" data-ptype="${esc(payerType)}" data-pid="${esc(payerId)}"`
-            + ` onchange="window._hpSetCycle(this)" title="지정한 일자는 모든 달에 적용됩니다"`
+            + ` onclick="event.stopPropagation()" onchange="window._hpSetCycle(this)" title="지정한 일자는 모든 달에 적용됩니다"`
             + ` style="padding:4px 6px; border:1px solid var(--border,#cbd5e1); border-radius:6px; font-size:12px; background:#fff;">${opts}</select>`;
     }
 
@@ -470,6 +517,99 @@
             if (startSel) startSel.disabled = false;
             if (endSel) endSel.disabled = false;
         }
+    };
+
+    // ── 입금 CRUD (hotel_payments) ───────────────────────
+    // 부분 유니크(hotel_id / company_id + year_month)라 onConflict upsert 대신
+    // select → update-or-insert. 유니크 위반 시 재조회 후 update. year_month = 현재 ym(종료일 기준).
+    async function savePayment(payerType, payerId, amount, paidAt) {
+        const ym = getYm();
+        let q = window.mySupabase.from('hotel_payments').select('id')
+            .eq('factory_id', currentFactoryId).eq('year_month', ym);
+        q = (payerType === 'company') ? q.eq('company_id', payerId) : q.eq('hotel_id', payerId);
+        const { data: existing, error: selErr } = await q.maybeSingle();
+        if (selErr) throw selErr;
+
+        if (existing) {
+            const { error } = await window.mySupabase.from('hotel_payments')
+                .update({ paid_amount: amount, paid_at: paidAt }).eq('id', existing.id);
+            if (error) throw error;
+            return;
+        }
+
+        const payload = { factory_id: currentFactoryId, year_month: ym, paid_amount: amount, paid_at: paidAt };
+        if (payerType === 'company') payload.company_id = payerId; else payload.hotel_id = payerId;
+        const { error: insErr } = await window.mySupabase.from('hotel_payments').insert([payload]);
+        if (insErr) {
+            let rq = window.mySupabase.from('hotel_payments').select('id')
+                .eq('factory_id', currentFactoryId).eq('year_month', ym);
+            rq = (payerType === 'company') ? rq.eq('company_id', payerId) : rq.eq('hotel_id', payerId);
+            const { data: again } = await rq.maybeSingle();
+            if (again) {
+                const { error } = await window.mySupabase.from('hotel_payments')
+                    .update({ paid_amount: amount, paid_at: paidAt }).eq('id', again.id);
+                if (error) throw error;
+            } else {
+                throw insErr;
+            }
+        }
+    }
+
+    function paidMap(payerType) {
+        if (!_lastRender) return null;
+        return payerType === 'company' ? _lastRender.paidByCompany : _lastRender.paidByHotel;
+    }
+    function rerenderFromCache() {
+        if (_lastRender) renderRows(_lastRender.rows, _lastRender.paidByHotel, _lastRender.paidByCompany);
+    }
+
+    // 입금액 인라인 수정: 숫자만 파싱, 빈값/0 → 0(미입금). 저장 후 캐시 갱신 + 재렌더(요약 포함).
+    window._hpSavePaid = async function (inp) {
+        const ptype = inp.dataset.ptype, pid = inp.dataset.pid;
+        const raw = String(inp.value).replace(/[^0-9]/g, '');
+        const amount = raw ? Number(raw) : 0;
+        const map = paidMap(ptype) || {};
+        const existingAt = map[pid] ? map[pid].at : null;
+        const paidAt = amount > 0 ? (existingAt || todayStr()) : null; // 금액 있으면 기존 날짜 유지, 없으면 오늘
+
+        inp.disabled = true;
+        try {
+            await savePayment(ptype, pid, amount, paidAt);
+            if (paidMap(ptype)) paidMap(ptype)[pid] = { amount: amount, at: paidAt };
+            rerenderFromCache(); // 그 행 미수금·상태 + 요약 3카드 갱신(DB 재조회 없음)
+        } catch (e) {
+            console.warn('[hotel-payments] 입금액 저장 실패', e);
+            alert('입금액 저장 실패: ' + (e.message || e));
+            rerenderFromCache(); // 캐시는 미변경 → 이전 값으로 원복
+        }
+    };
+
+    // 완료 체크: 체크 → 청구액만큼 입금 + 오늘 날짜, 해제 → 0 + 날짜 제거.
+    window._hpToggleDone = async function (cb) {
+        const ptype = cb.dataset.ptype, pid = cb.dataset.pid;
+        const billed = Number(cb.dataset.billed || 0);
+        const checked = cb.checked;
+        const amount = checked ? billed : 0;
+        const paidAt = checked ? todayStr() : null;
+
+        cb.disabled = true;
+        try {
+            await savePayment(ptype, pid, amount, paidAt);
+            if (paidMap(ptype)) paidMap(ptype)[pid] = { amount: amount, at: paidAt };
+            rerenderFromCache();
+        } catch (e) {
+            console.warn('[hotel-payments] 완료 처리 저장 실패', e);
+            alert('완료 처리 저장 실패: ' + (e.message || e));
+            rerenderFromCache(); // 원복
+        }
+    };
+
+    // 위탁사 행 펼치기/접기 — 재조회 없이 캐시로 재렌더(상태는 _expanded에 유지).
+    window._hpToggleCompany = function (companyId) {
+        if (_expanded.has(companyId)) _expanded.delete(companyId);
+        else _expanded.add(companyId);
+        if (_lastRender) renderRows(_lastRender.rows, _lastRender.paidByHotel, _lastRender.paidByCompany);
+        else refreshData();
     };
 
     function goMonth(delta) {
