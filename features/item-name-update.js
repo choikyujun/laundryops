@@ -314,4 +314,8 @@
     } else {
         applyPatches();
     }
+
+    // 재사용 노출: 입금확인(features/hotel-payments.js) 등에서 동일 DnD 로직 사용(복제 금지).
+    window.initDragSort = initDragSort;
+    window.DRAG_HANDLE_STYLE = HANDLE_STYLE;
 })();

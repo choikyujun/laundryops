@@ -350,6 +350,9 @@
 
         const moneyTd = 'text-align:right; ' + MONO;
         const muted = 'color:var(--secondary,#94a3b8);';
+        // 드래그 순서(initDragSort 재사용). 노출 안 됐으면 핸들 숨김 + draggable 미부여.
+        const dragOk = typeof window.initDragSort === 'function';
+        const HANDLE = window.DRAG_HANDLE_STYLE || 'cursor:grab; padding:4px 10px; color:#94a3b8; font-size:16px; user-select:none;';
         let sumBilled = 0, sumPaid = 0, sumUnpaid = 0;
         let html = '';
 
@@ -358,6 +361,8 @@
             const expanded = isCompany && _expanded.has(row.payerId);
             const payInfo = isCompany ? paidByCompany[row.payerId] : paidByHotel[row.payerId];
             const paid = payInfo ? Number(payInfo.amount || 0) : 0;
+            // 미수 행 = 집계된(ok) 행 중 미수금 > 0 (미입금·부분입금 모두). 강조 대상.
+            const isUnpaidRow = row.state === 'ok' && (Number(row.billed || 0) - paid) > 0;
 
             // 시작일·종료일 = 일자 select(1~31). 값 변경 즉시 저장 후 재계산.
             const key = row.payerType + '-' + row.payerId;
@@ -370,8 +375,12 @@
             const countText = isCompany
                 ? `<span style="flex-shrink:0; font-size:11px; ${muted}">${(row._members || []).length}곳</span>`
                 : '';
+            const misuLabel = isUnpaidRow
+                ? `<span style="flex-shrink:0; font-weight:700; font-size:11px; color:var(--danger,#dc2626);">미수</span>`
+                : '';
             const nameCell = `<td style="text-align:left;"><div style="display:flex; align-items:center; gap:6px; min-width:0;">`
                 + chevron
+                + misuLabel
                 + `<span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelCell(row)}</span>`
                 + countText
                 + (periodText ? `<span style="flex-shrink:0; font-size:11px; ${muted} ${MONO}">${periodText}</span>` : '')
@@ -379,8 +388,8 @@
             const startCell = `<td style="text-align:center;">${daySelect('hp-start', key, row.startDay, row.payerType, row.payerId)}</td>`;
             const endCell = `<td style="text-align:center;">${daySelect('hp-end', key, row.endDay, row.payerType, row.payerId)}</td>`;
 
-            // 위탁사 행 배경(옅게) + 클릭 토글. 부분입금이면 danger 배경이 우선.
-            let bg = isCompany ? 'var(--surface-1,#f8fafc)' : '';
+            // 배경: 미수 행(미입금·부분입금)은 danger 우선, 아니면 위탁사만 옅은 surface-1.
+            let bg = isUnpaidRow ? 'var(--bg-danger,#fef2f2)' : (isCompany ? 'var(--surface-1,#f8fafc)' : '');
             const clickAttr = isCompany ? ` onclick="window._hpToggleCompany('${esc(row.payerId)}')"` : '';
 
             let bodyCells;
@@ -400,7 +409,7 @@
 
                 const completed = paid > 0 && paid >= billed;   // 미수금 0 이하 → 완료
                 const partial = paid > 0 && paid < billed;
-                if (partial) bg = 'var(--bg-danger,#fef2f2)'; // 부분입금 강조 우선
+                // 배경(danger)은 isUnpaidRow에서 이미 처리(미입금·부분입금 공통).
 
                 const pAttr = `data-ptype="${esc(row.payerType)}" data-pid="${esc(row.payerId)}"`;
                 const paidInput = `<input type="text" inputmode="numeric" value="${paid > 0 ? paid.toLocaleString() : ''}" placeholder="0" ${pAttr}`
@@ -419,8 +428,13 @@
             }
 
             const trStyle = (bg ? 'background:' + bg + ';' : '') + (isCompany ? 'cursor:pointer;' : '');
-            html += `<tr${trStyle ? ` style="${trStyle}"` : ''}${clickAttr}>
-                <td style="text-align:center; color:var(--secondary,#cbd5e1);"></td>
+            // 드래그 핸들(≡) + 행 draggable/data-item-id. 자식(호텔) 행은 대상 아님.
+            const handleCell = dragOk
+                ? `<td style="text-align:center;"><span onclick="event.stopPropagation()" style="${HANDLE}" title="드래그하여 순서 변경">&#8801;</span></td>`
+                : `<td></td>`;
+            const dragAttr = dragOk ? ` draggable="true" data-item-id="${esc(row.payerType)}:${esc(row.payerId)}"` : '';
+            html += `<tr${trStyle ? ` style="${trStyle}"` : ''}${clickAttr}${dragAttr}>
+                ${handleCell}
                 ${nameCell}
                 ${startCell}
                 ${endCell}
@@ -613,6 +627,82 @@
         else refreshData();
     };
 
+    // ── 드래그 순서(payment_payers.sort_order) ────────────
+    // initDragSort(item-name-update.js) 재사용. tbody는 persistent → 1회만 연결.
+    let _dragInited = false;
+    function initDrag() {
+        if (_dragInited) return;
+        if (typeof window.initDragSort !== 'function') return; // 노출 안 됐으면 스킵
+        const tbody = document.getElementById('hp-list');
+        if (!tbody) return;
+        window.initDragSort(tbody, saveOrder);
+        _dragInited = true;
+    }
+
+    // 'hotel:h_123' / 'company:uuid' → { payerType, payerId }
+    function parseItemId(itemId) {
+        const i = String(itemId).indexOf(':');
+        return { payerType: itemId.substring(0, i), payerId: itemId.substring(i + 1) };
+    }
+
+    // 캐시 행 순서를 orderedIds에 맞게 재배열(즉시 반영용). 누락분은 뒤에 append.
+    function reorderCache(orderedIds) {
+        if (!_lastRender) return;
+        const map = {};
+        _lastRender.rows.forEach(r => { map[r.payerType + ':' + r.payerId] = r; });
+        const next = [];
+        orderedIds.forEach(id => { if (map[id]) next.push(map[id]); });
+        _lastRender.rows.forEach(r => {
+            if (orderedIds.indexOf(r.payerType + ':' + r.payerId) < 0) next.push(r);
+        });
+        _lastRender.rows = next;
+    }
+
+    // payment_payers.sort_order만 갱신(start_day/end_day 보존). select→update-or-insert.
+    async function savePayerSort(payerType, payerId, sortOrder) {
+        let q = window.mySupabase.from('payment_payers').select('id').eq('factory_id', currentFactoryId);
+        q = (payerType === 'company') ? q.eq('company_id', payerId) : q.eq('hotel_id', payerId);
+        const { data: existing, error: selErr } = await q.maybeSingle();
+        if (selErr) throw selErr;
+        if (existing) {
+            const { error } = await window.mySupabase.from('payment_payers')
+                .update({ sort_order: sortOrder }).eq('id', existing.id);
+            if (error) throw error;
+            return;
+        }
+        const payload = { factory_id: currentFactoryId, sort_order: sortOrder };
+        if (payerType === 'company') payload.company_id = payerId; else payload.hotel_id = payerId;
+        const { error: insErr } = await window.mySupabase.from('payment_payers').insert([payload]);
+        if (insErr) {
+            let rq = window.mySupabase.from('payment_payers').select('id').eq('factory_id', currentFactoryId);
+            rq = (payerType === 'company') ? rq.eq('company_id', payerId) : rq.eq('hotel_id', payerId);
+            const { data: again } = await rq.maybeSingle();
+            if (again) {
+                const { error } = await window.mySupabase.from('payment_payers')
+                    .update({ sort_order: sortOrder }).eq('id', again.id);
+                if (error) throw error;
+            } else {
+                throw insErr;
+            }
+        }
+    }
+
+    // drop 후 호출: 0-based 전체 재번호. 낙관적 즉시 반영 + 실패 시 alert(기존은 실패 무시였음).
+    async function saveOrder(orderedIds) {
+        reorderCache(orderedIds);   // 캐시 순서 갱신
+        rerenderFromCache();        // 자식 행까지 올바른 순서로 즉시 재렌더
+        try {
+            await Promise.all(orderedIds.map((id, i) => {
+                const p = parseItemId(id);
+                return savePayerSort(p.payerType, p.payerId, i);
+            }));
+        } catch (e) {
+            console.warn('[hotel-payments] 순서 저장 실패', e);
+            alert('순서 저장 실패: ' + (e.message || e));
+            refreshData(); // 실제 DB 순서로 재동기화
+        }
+    }
+
     function goMonth(delta) {
         setYm(shiftYm(getYm(), delta));
         refreshData();
@@ -684,6 +774,7 @@
     // ── 진입점: 탭 클릭 시 호출(index.html onclick) ──
     window.loadHotelPayments = function () {
         if (!ensureScaffold()) return;
+        initDrag(); // persistent tbody에 DnD 1회 연결
         setYm(getYm()); // 기본 이번 달 + 라벨 동기화
         refreshData();
     };
