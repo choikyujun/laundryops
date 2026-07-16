@@ -144,7 +144,9 @@
             const [hotelsRes, companiesRes, payersRes, payRes] = await Promise.all([
                 window.mySupabase.from('hotels')
                     .select('id, name, is_consignment, consignment_company_id, contract_type, fixed_amount, created_at')
-                    .eq('factory_id', currentFactoryId).order('name', { ascending: true }),
+                    .eq('factory_id', currentFactoryId)
+                    .neq('status', 'inactive')   // 운영중지(거래종료) 제외 — 기존 명세서 화면(app_v38.js:3089)과 동일
+                    .order('name', { ascending: true }),
                 window.mySupabase.from('consignment_companies')
                     .select('id, name')
                     .eq('factory_id', currentFactoryId),
