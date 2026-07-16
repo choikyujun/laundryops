@@ -73,7 +73,7 @@
     }
 
     // 금액 등폭(자릿수 세로 정렬) — revenue-top-align.js와 동일 접근.
-    const MONO = 'font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums;';
+    const MONO = 'font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;';
 
     function won(n) { return Number(n || 0).toLocaleString() + '원'; }
     function mmdd(dateStr) {
