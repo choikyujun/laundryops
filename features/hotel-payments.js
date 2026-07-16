@@ -73,7 +73,32 @@
     }
 
     // 금액 등폭(자릿수 세로 정렬) — revenue-top-align.js와 동일 접근.
-    const MONO = 'font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;';
+    // 금액 등폭은 인라인 style로 넣지 않는다 — 폰트 스택의 "SF Mono" 큰따옴표가
+    // style="..." 속성을 조기 종료시켜 스타일 전체가 깨진다. 대신 <style> 규칙 주입(ensureMoneyStyle).
+    const STYLE_ID = 'hp-money-style';
+    function ensureMoneyStyle() {
+        if (document.getElementById(STYLE_ID)) return; // 1회 가드
+        const stack = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
+        const css =
+            // 표 금액 열(청구액=5, 입금액=6, 미수금=7) + 입금액 input: 우측정렬 + 등폭
+            '#hp-list td:nth-child(5),' +
+            '#hp-list td:nth-child(6),' +
+            '#hp-list td:nth-child(7),' +
+            '#hp-list td:nth-child(6) input {' +
+            '  text-align: right !important;' +
+            '  font-family: ' + stack + ' !important;' +
+            '  font-variant-numeric: tabular-nums !important;' +
+            '}' +
+            // 요약 3카드 값: 등폭(정렬은 카드 레이아웃 유지)
+            '#hp-sum-billed, #hp-sum-paid, #hp-sum-unpaid {' +
+            '  font-family: ' + stack + ' !important;' +
+            '  font-variant-numeric: tabular-nums !important;' +
+            '}';
+        const el = document.createElement('style');
+        el.id = STYLE_ID;
+        el.textContent = css;
+        document.head.appendChild(el);
+    }
 
     function won(n) { return Number(n || 0).toLocaleString() + '원'; }
     function mmdd(dateStr) {
@@ -348,7 +373,7 @@
             return;
         }
 
-        const moneyTd = 'text-align:right; ' + MONO;
+        const moneyTd = 'text-align:right;'; // 등폭 폰트는 ensureMoneyStyle의 <style> 규칙이 담당
         const muted = 'color:var(--secondary,#94a3b8);';
         // 드래그 순서(initDragSort 재사용). 노출 안 됐으면 핸들 숨김 + draggable 미부여.
         const dragOk = typeof window.initDragSort === 'function';
@@ -383,7 +408,7 @@
                 + misuLabel
                 + `<span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelCell(row)}</span>`
                 + countText
-                + (periodText ? `<span style="flex-shrink:0; font-size:11px; ${muted} ${MONO}">${periodText}</span>` : '')
+                + (periodText ? `<span style="flex-shrink:0; margin-left:auto; font-size:11px; ${muted}">${periodText}</span>` : '')
                 + `</div></td>`;
             const startCell = `<td style="text-align:center;">${daySelect('hp-start', key, row.startDay, row.payerType, row.payerId)}</td>`;
             const endCell = `<td style="text-align:center;">${daySelect('hp-end', key, row.endDay, row.payerType, row.payerId)}</td>`;
@@ -414,7 +439,7 @@
                 const pAttr = `data-ptype="${esc(row.payerType)}" data-pid="${esc(row.payerId)}"`;
                 const paidInput = `<input type="text" inputmode="numeric" value="${paid > 0 ? paid.toLocaleString() : ''}" placeholder="0" ${pAttr}`
                     + ` onclick="event.stopPropagation()" onchange="window._hpSavePaid(this)"`
-                    + ` style="width:100%; height:28px; text-align:right; ${MONO} border:1px solid var(--border,#cbd5e1); border-radius:6px; padding:0 6px; box-sizing:border-box; font-size:12px;${completed ? ' color:var(--success,#16a34a);' : ''}">`;
+                    + ` style="width:100%; height:28px; text-align:right; border:1px solid var(--border,#cbd5e1); border-radius:6px; padding:0 6px; box-sizing:border-box; font-size:12px;${completed ? ' color:var(--success,#16a34a);' : ''}">`;
                 const unpaidCell = completed
                     ? `<td style="${moneyTd} ${muted}">0원</td>`
                     : `<td style="${moneyTd} color:var(--danger,#dc2626);${partial ? ' font-weight:700;' : ''}">${won(unpaid)}</td>`;
@@ -717,7 +742,7 @@
 
         const cardStyle = 'flex:1; min-width:0; background:var(--surface,#fff); border:1px solid var(--border,#e2e8f0); border-radius:var(--radius,12px); padding:14px 16px;';
         const cardTitle = 'font-size:13px; color:var(--secondary,#64748b); margin-bottom:6px;';
-        const cardValue = 'font-size:24px; font-weight:500; ' + MONO;
+        const cardValue = 'font-size:24px; font-weight:500;'; // 등폭은 ensureMoneyStyle의 <style> 규칙(#hp-sum-*)
 
         panel.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin:14px 0 12px;">
@@ -774,6 +799,7 @@
     // ── 진입점: 탭 클릭 시 호출(index.html onclick) ──
     window.loadHotelPayments = function () {
         if (!ensureScaffold()) return;
+        ensureMoneyStyle(); // 금액 등폭 <style> 1회 주입
         initDrag(); // persistent tbody에 DnD 1회 연결
         setYm(getYm()); // 기본 이번 달 + 라벨 동기화
         refreshData();
