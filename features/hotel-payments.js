@@ -105,15 +105,23 @@
             '  #hp-table { min-width: 500px !important; }' +
             '  #hp-table th:nth-child(3), #hp-table td:nth-child(3),' +
             '  #hp-table th:nth-child(4), #hp-table td:nth-child(4) { display: none !important; }' +
-            '  #hp-table th:nth-child(1) { width: 4% !important; }' +
-            '  #hp-table th:nth-child(2) { width: 40% !important; }' +
-            '  #hp-table th:nth-child(5) { width: 16% !important; }' +
-            '  #hp-table th:nth-child(6) { width: 16% !important; }' +
-            '  #hp-table th:nth-child(7) { width: 16% !important; }' +
-            '  #hp-table th:nth-child(8) { width: 8% !important; }' +
+            // 폭은 th·td 양쪽에 동일 적용해야 한다: 폰에서 style.css가 tr을 display:table+
+            //   table-layout:fixed로 만들어 각 행이 독립 테이블이 됨 → td 폭이 없으면 본문은
+            //   균등 분할되어 th(%) 헤더와 어긋난다. 열별로 th·td 같은 %를 준다.
+            '  #hp-table th:nth-child(1), #hp-table td:nth-child(1) { width: 8% !important; }' +
+            '  #hp-table th:nth-child(2), #hp-table td:nth-child(2) { width: 36% !important; }' +
+            '  #hp-table th:nth-child(5), #hp-table td:nth-child(5) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(6), #hp-table td:nth-child(6) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(7), #hp-table td:nth-child(7) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(8), #hp-table td:nth-child(8) { width: 8% !important; }' +
             // 기간 숨김 + 이름 우선(남는 폭을 이름이 차지, 배지·미수는 그다음).
             '  #hp-list .hp-period { display: none !important; }' +
             '  #hp-list .hp-name { flex: 1 1 auto !important; min-width: 0 !important; }' +
+            // 요약 3카드 값: 폰에서 24px → 12px(50%). 값에 인라인 font-size:24px가 있어 !important 필요.
+            //   nowrap로 좁은 3열 grid에서 줄바꿈 방지. 라벨(청구 총액 등)은 미변경.
+            '  #hp-sum-billed, #hp-sum-paid, #hp-sum-unpaid {' +
+            '    font-size: 12px !important; white-space: nowrap !important;' +
+            '  }' +
             '}';
         const el = document.createElement('style');
         el.id = STYLE_ID;
@@ -419,10 +427,11 @@
             const key = row.payerType + '-' + row.payerId;
             const periodText = (row.startDate && row.endDate) ? (mmdd(row.startDate) + ' ~ ' + mmdd(row.endDate)) : '';
 
-            // 거래처 셀: [화살표/빈칸] 이름·라벨(ellipsis) [N곳] [기간]
+            // 거래처 셀: [화살표(위탁사만)] 이름·라벨(ellipsis) [N곳] [기간]
+            // 직영/미지정 행은 펼침 화살표가 없으므로 빈 자리표시자 없이 이름을 왼쪽 끝에 붙인다(왼쪽 정렬).
             const chevron = isCompany
                 ? `<span style="flex-shrink:0; width:14px; text-align:center; color:var(--secondary,#94a3b8); font-size:11px;">${expanded ? '&#9662;' : '&#9656;'}</span>`
-                : `<span style="flex-shrink:0; width:14px;"></span>`;
+                : '';
             const countText = isCompany
                 ? `<span style="flex-shrink:0; font-size:11px; ${muted}">${(row._members || []).length}곳</span>`
                 : '';
@@ -802,7 +811,7 @@
                     <table id="hp-table" class="admin-table" style="min-width:720px; table-layout:fixed;">
                         <thead>
                             <tr>
-                                <th style="width:5%;"></th>
+                                <th style="width:5%; text-align:center;">순서</th>
                                 <th style="width:22%; text-align:left;">거래처</th>
                                 <th style="width:11%; text-align:center;">시작일</th>
                                 <th style="width:11%; text-align:center;">종료일</th>
