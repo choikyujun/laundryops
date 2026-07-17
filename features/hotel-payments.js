@@ -93,6 +93,12 @@
             '#hp-sum-billed, #hp-sum-paid, #hp-sum-unpaid {' +
             '  font-family: ' + stack + ' !important;' +
             '  font-variant-numeric: tabular-nums !important;' +
+            '}' +
+            // 좁은 화면(폰): 거래처 셀에서 기간 텍스트를 숨겨 이름이 눌리지 않게 하고,
+            // 이름 span에 최소 폭을 보장(완전히 사라지는 것 방지). 데스크톱은 그대로.
+            '@media (max-width: 768px) {' +
+            '  #hp-list .hp-period { display: none !important; }' +
+            '  #hp-list .hp-name { min-width: 60px !important; }' +
             '}';
         const el = document.createElement('style');
         el.id = STYLE_ID;
@@ -339,19 +345,24 @@
         }
     }
 
-    // ── 라벨(거래처 셀) ──
+    // ── 라벨(거래처 셀) 배지 ──
+    // 직영=옅은 회색+text-secondary, 위탁=옅은 액센트+text-accent, 미지정=경고(기존).
+    // --surface-1/--bg-accent/--text-accent/--radius는 style.css에 미정의라 폴백값 필수
+    // (특히 --surface는 #fff라 배지가 흰색으로 안 보였음).
+    const BADGE_BASE = 'display:inline-block; font-size:11px; padding:1px 5px; border-radius:var(--radius,6px); white-space:nowrap;';
     const TAG = {
-        direct: 'background:var(--surface,#f1f5f9); color:var(--secondary,#64748b);',
+        direct: 'background:var(--surface-1,#f1f5f9); color:var(--secondary,#64748b);',
+        company: 'background:var(--bg-accent,#e0f4fc); color:var(--text-accent,#0077b3);',
         unassigned: 'background:#fef3c7; color:#92400e;'
     };
     function labelCell(row) {
         if (row.labelKind === 'company') {
-            return `<strong>위탁·${esc(row.name)}</strong>`;
+            return `<span style="${BADGE_BASE} ${TAG.company}">위탁·${esc(row.name)}</span>`;
         }
         if (row.labelKind === 'unassigned') {
-            return `<strong>${esc(row.name)}</strong> <span style="display:inline-block; font-size:11px; padding:1px 5px; border-radius:4px; ${TAG.unassigned}">위탁사 미지정</span>`;
+            return `<strong>${esc(row.name)}</strong> <span style="${BADGE_BASE} ${TAG.unassigned}">위탁사 미지정</span>`;
         }
-        return `<strong>${esc(row.name)}</strong> <span style="display:inline-block; font-size:11px; padding:1px 5px; border-radius:4px; ${TAG.direct}">직영</span>`;
+        return `<strong>${esc(row.name)}</strong> <span style="${BADGE_BASE} ${TAG.direct}">직영</span>`;
     }
 
     function setSummary(billed, paid, unpaid) {
@@ -406,9 +417,10 @@
             const nameCell = `<td style="text-align:left;"><div style="display:flex; align-items:center; gap:6px; min-width:0;">`
                 + chevron
                 + misuLabel
-                + `<span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelCell(row)}</span>`
+                + `<span class="hp-name" style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelCell(row)}</span>`
                 + countText
-                + (periodText ? `<span style="flex-shrink:0; margin-left:auto; font-size:11px; ${muted}">${periodText}</span>` : '')
+                // 기간 텍스트는 좁은 화면(≤768px)에서 숨김(ensureMoneyStyle media query) — 이름 폭 확보.
+                + (periodText ? `<span class="hp-period" style="flex-shrink:0; margin-left:auto; font-size:11px; ${muted}">${periodText}</span>` : '')
                 + `</div></td>`;
             const startCell = `<td style="text-align:center;">${daySelect('hp-start', key, row.startDay, row.payerType, row.payerId)}</td>`;
             const endCell = `<td style="text-align:center;">${daySelect('hp-end', key, row.endDay, row.payerType, row.payerId)}</td>`;
