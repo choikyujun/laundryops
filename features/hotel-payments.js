@@ -94,11 +94,26 @@
             '  font-family: ' + stack + ' !important;' +
             '  font-variant-numeric: tabular-nums !important;' +
             '}' +
-            // 좁은 화면(폰): 거래처 셀에서 기간 텍스트를 숨겨 이름이 눌리지 않게 하고,
-            // 이름 span에 최소 폭을 보장(완전히 사라지는 것 방지). 데스크톱은 그대로.
+            // ── 폰(≤768px): 시작일·종료일 열을 제거해 거래처 열에 폭을 몰아준다. ──
+            // 이유: table-layout:fixed라 거래처 열이 22%로 못박혀(720px 기준 ~158px) 이름이
+            //   화살표·미수·배지 같은 shrink 불가 요소에 밀려 0으로 눌렸음. 폰은 미수·입금 확인 용도라
+            //   주기 select 두 열은 감춰도 무방(데스크톱에서 설정).
+            // 열 6개로 줄었으니 min-width도 720 → 500으로 낮춰 가로 스크롤을 줄인다.
+            // nth-child는 display:none 형제도 세므로 원래 열 번호(3·4 숨김, 5~8 유지)를 그대로 쓴다.
+            // #hp-table로 스코프 — 앱의 다른 .admin-table엔 영향 없음.
             '@media (max-width: 768px) {' +
+            '  #hp-table { min-width: 500px !important; }' +
+            '  #hp-table th:nth-child(3), #hp-table td:nth-child(3),' +
+            '  #hp-table th:nth-child(4), #hp-table td:nth-child(4) { display: none !important; }' +
+            '  #hp-table th:nth-child(1) { width: 4% !important; }' +
+            '  #hp-table th:nth-child(2) { width: 40% !important; }' +
+            '  #hp-table th:nth-child(5) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(6) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(7) { width: 16% !important; }' +
+            '  #hp-table th:nth-child(8) { width: 8% !important; }' +
+            // 기간 숨김 + 이름 우선(남는 폭을 이름이 차지, 배지·미수는 그다음).
             '  #hp-list .hp-period { display: none !important; }' +
-            '  #hp-list .hp-name { min-width: 60px !important; }' +
+            '  #hp-list .hp-name { flex: 1 1 auto !important; min-width: 0 !important; }' +
             '}';
         const el = document.createElement('style');
         el.id = STYLE_ID;
@@ -784,7 +799,7 @@
 
             <div class="chart-container">
                 <div class="table-scroll-wrap">
-                    <table class="admin-table" style="min-width:720px; table-layout:fixed;">
+                    <table id="hp-table" class="admin-table" style="min-width:720px; table-layout:fixed;">
                         <thead>
                             <tr>
                                 <th style="width:5%;"></th>
