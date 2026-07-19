@@ -65,6 +65,9 @@ window.loadAnalysisTab = async function () {
       yearOptions += `<option value="${yy}"${yy === curYear ? ' selected' : ''}>${yy}년</option>`;
     }
 
+    // 주간 일별 그래프용 초기 주차 옵션(올해, 기본=이번 주)
+    const weekOptionsInit = _anWeekOptionsForYear(curYear);
+
     // 거래처 체크박스 버튼 생성 (onclick 인라인)
     const hotelCheckboxes = hotels.map((h, i) =>
       `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
@@ -164,6 +167,31 @@ window.loadAnalysisTab = async function () {
         </div>
 
         <div class="analysis-canvas-wrap"><canvas id="canvasDailyRevenue"></canvas></div>
+      </div>
+
+      <!-- 신규: 주간 일별 매출 (단가제 발행 기준, 차감 제외) -->
+      <div class="analysis-section">
+        <div class="analysis-section-title">
+          <svg class="icon" aria-hidden="true"><use href="#i-bar-chart-2"/></svg>
+          <h4>주간 일별 매출</h4>
+          <span class="an-badge">주간</span>
+          <span style="font-size:11px; color:#64748b;">※ 단가제 발행 매출 기준(차감 명세서 제외). 정액제는 막대에서 빼고 아래에 월 고정액으로 별도 표기</span>
+        </div>
+        <div class="analysis-ctrl">
+          <select id="an-year-weekly" onchange="window._anRebuildWeeks()">
+            ${yearOptions}
+          </select>
+          <select id="an-week-weekly">
+            ${weekOptionsInit}
+          </select>
+          <select id="an-hotel-weekly">
+            <option value="">전체 거래처</option>
+            ${hotelOptions}
+          </select>
+          <button class="an-btn" id="an-weekly-btn" onclick="window.renderWeeklyChart()">조회</button>
+        </div>
+        <div id="an-weekly-summary" style="font-size:12px; color:#334155; margin-bottom:10px;"></div>
+        <div class="analysis-canvas-wrap"><canvas id="canvasWeeklyDaily"></canvas></div>
       </div>
 
       <!-- ③ 월별 연도 비교 -->
@@ -753,6 +781,180 @@ window.removeHotelFromGroup = async function (hotelId) {
 };
 
 // ③ 월별 연도 비교 차트
+/* =============================================================
+ * 주간 일별 매출 그래프 (신규)
+ * -------------------------------------------------------------
+ * [집계 기준 — 정정본, 다른 탭/입금확인과 일치]
+ *   - invoices를 선택 주(월~일) date 범위로 조회.
+ *   - .range() 페이지네이션으로 1000행 상한 우회(이 탭 기존 집계엔 없던 처리).
+ *   - 단가제만: hotels!inner(contract_type='unit'). staff_name 포함 조회 →
+ *     '관리자(차감)' 접두 행은 매출에서 제외(차감 명세서 제외).
+ *   - inv.date별 하루 단위 합산 → 월~일 7일 막대.
+ *
+ * [정액제 처리 — 일별 그래프 특례 · 결정 기록]
+ *   정액제(contract_type='fixed')는 명세서가 없어 특정 '일'에 매출이 없다.
+ *   월정액을 일별로 쪼개면 오해를 부르므로 일별 막대에는 분산하지 않는다.
+ *   대신 선택 범위의 fixed_amount 합(생성월<=주 소속월 게이팅)을 주간 요약에
+ *   '정액제(월 고정, 막대 제외): N원'으로 별도 표기한다.
+ *   (입금확인은 월 단위라 정액 반영이 가능하지만, 여기선 일 단위라 분산 불가.)
+ *   생성월 게이팅은 computeMonthlyRevenue(factory-expenses.js:295~) 기준을 따름.
+ * ============================================================= */
+function _anFmtYmd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function _anMondayOf(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); // 월요일로 이동(월=0..일=6 오프셋)
+  return x;
+}
+function _anWeekLabel(monday) {
+  const sun = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  const n = Math.floor((monday.getDate() - 1) / 7) + 1; // 그 달의 몇 번째 월요일
+  return `${monday.getMonth() + 1}월 ${n}주 (${monday.getMonth() + 1}/${monday.getDate()}~${sun.getMonth() + 1}/${sun.getDate()})`;
+}
+// 그 연도의 주(월요일 기준) 옵션 HTML. 첫 주~이번 주(미래 제외). 기본=이번 주(올해)/최신 주(과거연도).
+function _anWeekOptionsForYear(year) {
+  const today = new Date();
+  const todayMonday = _anMondayOf(today);
+  let m = new Date(year, 0, 1);
+  const off = (m.getDay() + 6) % 7;
+  if (off !== 0) m.setDate(m.getDate() + (7 - off)); // 1/1 이후 첫 월요일
+  const opts = [];
+  while (m.getFullYear() === year && m.getTime() <= todayMonday.getTime()) {
+    opts.push({ val: _anFmtYmd(m), label: _anWeekLabel(m) });
+    m = new Date(m.getFullYear(), m.getMonth(), m.getDate() + 7);
+  }
+  let defVal = (year === today.getFullYear()) ? _anFmtYmd(todayMonday) : (opts.length ? opts[opts.length - 1].val : '');
+  if (!opts.some(o => o.val === defVal)) defVal = opts.length ? opts[opts.length - 1].val : '';
+  return opts.map(o => `<option value="${o.val}"${o.val === defVal ? ' selected' : ''}>${o.label}</option>`).join('');
+}
+// 연도 select 변경 시 주차 목록 재생성
+window._anRebuildWeeks = function () {
+  const ys = document.getElementById('an-year-weekly');
+  const ws = document.getElementById('an-week-weekly');
+  if (!ys || !ws) return;
+  ws.innerHTML = _anWeekOptionsForYear(parseInt(ys.value, 10));
+};
+
+window.renderWeeklyChart = async function () {
+  const btn = document.getElementById('an-weekly-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '조회 중...'; }
+  try {
+    const factoryId = _getFactoryId();
+    if (!factoryId) { alert('로그인 후 이용 가능합니다.'); return; }
+
+    const weekSel = document.getElementById('an-week-weekly');
+    const mondayStr = weekSel ? weekSel.value : '';
+    if (!mondayStr) { alert('주차를 선택해주세요.'); return; }
+    const hotelSel = document.getElementById('an-hotel-weekly');
+    const hotelId = hotelSel ? hotelSel.value : ''; // '' = 전체 거래처
+
+    // 선택 주 월~일 7일 날짜(YYYY-MM-DD)
+    const [my, mm, md] = mondayStr.split('-').map(Number);
+    const days = [];
+    for (let i = 0; i < 7; i++) days.push(_anFmtYmd(new Date(my, mm - 1, md + i)));
+    const startDate = days[0], endDate = days[6];
+
+    // (1) 단가제 매출 — 차감 제외, .range() 페이지네이션(1000행 우회)
+    const PAGE = 1000;
+    const dayMap = {};
+    days.forEach(d => { dayMap[d] = 0; });
+    let from = 0;
+    for (;;) {
+      let q = window.mySupabase.from('invoices')
+        .select('date, total_amount, staff_name, hotel_id, hotels!inner(contract_type)')
+        .eq('factory_id', factoryId)
+        .eq('hotels.contract_type', 'unit')
+        .gte('date', startDate).lte('date', endDate);
+      if (hotelId) q = q.eq('hotel_id', hotelId);
+      const res = await q.range(from, from + PAGE - 1);
+      if (res.error) { alert('조회 오류: ' + res.error.message); return; }
+      const rows = res.data || [];
+      rows.forEach(inv => {
+        if (inv.staff_name && inv.staff_name.indexOf('관리자(차감)') === 0) return; // 차감 제외
+        if (dayMap[inv.date] !== undefined) dayMap[inv.date] += Number(inv.total_amount || 0);
+      });
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+
+    // (2) 정액제 — 일별 막대엔 미포함, 주석용 월 고정액 합계
+    let hq = window.mySupabase.from('hotels')
+      .select('id, contract_type, fixed_amount, created_at')
+      .eq('factory_id', factoryId)
+      .eq('contract_type', 'fixed');
+    if (hotelId) hq = hq.eq('id', hotelId);
+    const hres = await hq;
+    const weekMonth = mondayStr.slice(0, 7); // 주 소속월 = 월요일의 달
+    let fixedTotal = 0;
+    (hres.data || []).forEach(h => {
+      const cm = h.created_at ? String(h.created_at).slice(0, 7) : '2000-01';
+      if (cm <= weekMonth) fixedTotal += Number(h.fixed_amount || 0); // 생성월 게이팅
+    });
+
+    // (3) 요약 + 차트
+    const barData = days.map(d => dayMap[d]);
+    const weeklyTotal = barData.reduce((a, b) => a + b, 0);
+    const fmt = v => (v >= 10000 ? (v / 10000).toFixed(1) + '만원' : v.toLocaleString() + '원');
+
+    const sumEl = document.getElementById('an-weekly-summary');
+    if (sumEl) {
+      sumEl.innerHTML = `주간 발행 매출 합계 <b>${fmt(weeklyTotal)}</b>`
+        + (fixedTotal > 0 ? ` <span style="color:#64748b;">· 정액제(월 고정, 막대 제외) ${fmt(fixedTotal)}</span>` : '');
+    }
+
+    const labels = days.map(d => DOW_KR[new Date(d).getDay()] + ' ' + parseInt(d.slice(8), 10));
+
+    // 막대 위 금액 표기 플러그인(0/빈 막대는 생략)
+    const barValuePlugin = {
+      id: 'weeklyBarValues',
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        const meta = chart.getDatasetMeta(0);
+        if (!meta || !meta.data) return;
+        ctx.save();
+        ctx.font = '9px sans-serif';
+        ctx.fillStyle = '#334155';
+        ctx.textAlign = 'center';
+        meta.data.forEach((bar, i) => {
+          const v = barData[i];
+          if (!v) return;
+          const t = v >= 10000 ? Math.round(v / 10000) + '만' : String(v);
+          ctx.fillText(t, bar.x, bar.y - 4);
+        });
+        ctx.restore();
+      }
+    };
+
+    await _loadChartJs();
+    _drawChart('canvasWeeklyDaily', {
+      type: 'bar',
+      data: { labels, datasets: [{ label: '발행 매출', data: barData, backgroundColor: PALETTE[0], borderRadius: 4 }] },
+      plugins: [barValuePlugin],
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => { const idx = ctx[0].dataIndex; return `${days[idx]} (${DOW_KR[new Date(days[idx]).getDay()]})`; },
+              label: c => ' ' + Number(c.parsed.y).toLocaleString() + '원'
+            }
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => (v >= 10000 ? (v / 10000) + '만' : v) } }
+        }
+      }
+    });
+  } catch (e) {
+    alert('오류: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '조회'; }
+  }
+};
+
 window.renderMonthlyYearChart = async function () {
   try {
     const sel = document.getElementById('an-hotel-monthly');
