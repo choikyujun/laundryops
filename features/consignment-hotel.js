@@ -514,6 +514,16 @@
                 const consignPrice = (p.display_price != null) ? Number(p.display_price) : null;
                 mergedItems.push({ name: p.name, price, qty: savedItemsMap[p.name] || 0, category: p.category_name || '기타', consignPrice });
             });
+            // [desync 복구] 단가표에서 삭제/개명돼 이름이 안 맞는 저장 품목을 목록 끝에 그대로 추가.
+            // 차감 품목(name에 '(차감)')은 기존 표시 규칙 유지 위해 제외.
+            const _priceNames = new Set(priceList.map(p => p.name));
+            (inv.invoice_items || []).forEach(it => {
+                if (_priceNames.has(it.name)) return;
+                if (it.name && it.name.includes('(차감)')) return;
+                const base = Number(it.price || 0);
+                const price = (isConsignment && isHotelView && dpMap[it.name] != null) ? dpMap[it.name] : base;
+                mergedItems.push({ name: it.name, price, qty: Number(it.qty || 0), category: '기타', consignPrice: null, isDesync: true });
+            });
         } else {
             (inv.invoice_items || []).forEach(it => {
                 const base = Number(it.price || 0);
@@ -522,7 +532,10 @@
             });
         }
 
-        const supplyPrice = mergedItems.reduce((s, it) => s + (it.price * it.qty), 0);
+        // [파트너 보호] 위탁 파트너(호텔) 뷰에서는 desync 품목의 공장단가를 숨긴다(렌탈 실거래가 노출 차단).
+        // 단가·금액을 '-'로 표시하고 공급가 합계에서도 제외해 총액 역산 노출까지 막는다. 수량은 그대로 표시.
+        const _hidePrice = (it) => isConsignment && isHotelView && it.isDesync;
+        const supplyPrice = mergedItems.reduce((s, it) => s + (_hidePrice(it) ? 0 : it.price * it.qty), 0);
         // [작업4] 대표(admin) 화면 전용 참고 열: 위탁단가(display_price). isHotelView(파트너)면 항상 false
         const showConsign = isConsignment && !isHotelView && mergedItems.some(it => it.consignPrice != null);
         const grayBg = !isHotelView ? ' background:#f1f5f9;' : '';
@@ -558,10 +571,10 @@
                         <tbody>
                             ${grouped[cat].map(it => `<tr>
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px;">${it.name}</td>
-                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center; width:16%;${grayBg}">${it.price.toLocaleString()}</td>
+                                <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center; width:16%;${grayBg}">${_hidePrice(it) ? '-' : it.price.toLocaleString()}</td>
                                 ${showConsign ? `<td class="consign-price-col" style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                                 <td style="border-right:1px solid #cbd5e1; padding:1px 2px; text-align:center;">${it.qty}</td>
-                                <td style="padding:1px 2px; text-align:right;${grayBg}">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                                <td style="padding:1px 2px; text-align:right;${grayBg}">${_hidePrice(it) ? '-' : '₩ ' + (it.price * it.qty).toLocaleString()}</td>
                             </tr>`).join('')}
                         </tbody>
                     </table>
@@ -595,10 +608,10 @@
                         ${mergedItems.map(it => `
                         <tr>
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:left;">${it.name || '알수없음'}</td>
-                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right; width:15%;${grayBg}">${it.price.toLocaleString()}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right; width:15%;${grayBg}">${_hidePrice(it) ? '-' : it.price.toLocaleString()}</td>
                             ${showConsign ? `<td class="consign-price-col" style="padding:4px;border:1px solid #cbd5e1;text-align:right; width:15%;">${it.consignPrice != null ? it.consignPrice.toLocaleString() : '-'}</td>` : ''}
                             <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;">${it.qty}</td>
-                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;${grayBg}">₩ ${(it.price * it.qty).toLocaleString()}</td>
+                            <td style="padding:4px; border:1px solid #cbd5e1; text-align:right;${grayBg}">${_hidePrice(it) ? '-' : '₩ ' + (it.price * it.qty).toLocaleString()}</td>
                         </tr>`).join('')}
                     </tbody>
                     <tfoot id="invDetailVatFoot">
