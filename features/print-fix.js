@@ -11,8 +11,11 @@
     // 요소 복제
     const clone = el.cloneNode(true);
 
-    // 인쇄 시 불필요한 요소 제거 (btn-send, no-print 클래스 모두 타겟팅)
-    const toRemove = clone.querySelectorAll('.no-print, .btn-send, .btn-neutral');
+    // 인쇄 시 불필요한 요소 제거. 원본 셀렉터(.no-print/.btn-send/.btn-neutral)에 더해
+    // button 전체를 제거한다 — 발송 팝업 버튼(월말차감/발송/인쇄, app_v38.js:7317)과
+    // email-send 주입 파일저장 버튼(#downloadReportBtn)은 클래스가 없어 원본 셀렉터로는
+    // 안 걸리고 인쇄에 딸려 들어가 2페이지로 밀림. 리포트 본문은 표/div뿐이라 button 제거는 안전.
+    const toRemove = clone.querySelectorAll('.no-print, .btn-send, .btn-neutral, button');
     toRemove.forEach(node => node.remove());
 
     // 인쇄 창 생성
