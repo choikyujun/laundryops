@@ -284,9 +284,9 @@
       });
     });
 
-    // 2) 정액제 매출 — fixed_amount를 생성월 이후 가산 (원본과 동일)
+    // 2) 정액제 매출 — fixed_amount를 생성월 이후 가산. 운영중지월부터는 제외(과거 달 보존).
     var hotelQuery = window.mySupabase.from('hotels')
-      .select('id, name, contract_type, fixed_amount, created_at')
+      .select('id, name, contract_type, fixed_amount, created_at, status, inactive_at')
       .eq('factory_id', factoryId);
     if (hotelFilter !== 'all') hotelQuery = hotelQuery.eq('id', hotelFilter);
     var hotelRes = await hotelQuery;
@@ -294,8 +294,15 @@
 
     hotelData.forEach(function (h) {
       var createdMonth = h.created_at ? h.created_at.substring(0, 7) : '2000-01';
+      // 운영중지월(YYYY-MM). 그 달부터 정액 미가산. inactive_at이 null이면(마이그레이션 이전
+      // inactive 포함) 안전하게 가산 유지 — 과거 보존 원칙.
+      var inactiveMonth = h.inactive_at ? String(h.inactive_at).substring(0, 7) : null;
       if (h.contract_type === 'fixed') {
-        for (var mk in trend) { if (mk >= createdMonth) trend[mk] += Number(h.fixed_amount || 0); }
+        for (var mk in trend) {
+          if (mk >= createdMonth && (inactiveMonth === null || mk < inactiveMonth)) {
+            trend[mk] += Number(h.fixed_amount || 0);
+          }
+        }
       }
       if (hotelFilter !== 'all' && h.id === hotelFilter) {
         for (var mk2 in trend) { if (mk2 < createdMonth) trend[mk2] = 0; }
