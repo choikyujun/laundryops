@@ -1,23 +1,19 @@
 // 요금제별 기능 제한 로직 (기능명, 필요 요금제 레벨)
-const PLAN_LIMITS = {
-    'LIGHT': 1,
-    'ENTERPRISE': 2
-};
-
 const PLAN_FEATURES = {
-    'UNLIMITED_ISSUANCE': 2,   // 엔터프라이즈 이상
-    'STAFF_MANAGEMENT': 2,     // 엔터프라이즈 이상
-    'ADVANCED_STATS': 2,       // 엔터프라이즈 전용
-    'SPECIAL_HOTEL': 2,        // 엔터프라이즈 전용 (2단 명세서)
-    'DATA_BACKUP': 2           // 엔터프라이즈 전용
+    'UNLIMITED_ISSUANCE': 2,   // 스탠다드 이상
+    'STAFF_MANAGEMENT': 2,     // 스탠다드 이상
+    'ADVANCED_STATS': 2,       // 스탠다드 전용
+    'SPECIAL_HOTEL': 2,        // 스탠다드 전용 (2단 명세서)
+    'DATA_BACKUP': 2           // 스탠다드 전용
 };
 
 // 현재 공장의 요금제 레벨을 반환
 function getFactoryPlanLevel(factory) {
     if (!factory || !factory.plan) return 1; // 기본 라이트
     switch(factory.plan) {
-        case '무료요금제': return 2; // 무료요금제도 엔터프라이즈(2)와 동일
-        case '엔터프라이즈': return 2;
+        case '무료요금제': return 2; // 무료요금제도 스탠다드(2)와 동일
+        case '엔터프라이즈': // legacy alias, DB 마이그레이션 후에도 안전망으로 유지
+        case '스탠다드': return 2;
         case '라이트': return 1;
         default: return 1;
     }
@@ -53,7 +49,7 @@ window.checkIssuanceLimit = async function(factory) {
         const { data } = await window.mySupabase.from('factories').select('plan').eq('id', currentFactoryId).maybeSingle();
         f = data;
     }
-    if (getFactoryPlanLevel(f) >= 2) return true; // 엔터프라이즈 이상은 무제한
+    if (getFactoryPlanLevel(f) >= 2) return true; // 스탠다드 이상은 무제한
 
     const currentMonth = new Date().toISOString().substring(0, 7);
     const { count } = await window.mySupabase.from('invoices').select('id', { count: 'exact', head: true })
@@ -78,7 +74,7 @@ window.checkHotelLimit = async function(factory) {
     }
 
     const planLevel = getFactoryPlanLevel(f);
-    if (planLevel >= 2) return true; // 엔터프라이즈(2) 이상은 무제한
+    if (planLevel >= 2) return true; // 스탠다드(2) 이상은 무제한
 
     const { count } = await window.mySupabase.from('hotels').select('id', { count: 'exact', head: true })
         .eq('factory_id', currentFactoryId);
@@ -103,7 +99,7 @@ window.checkStaffLimit = async function(factory) {
     }
 
     const planLevel = getFactoryPlanLevel(f);
-    if (planLevel >= 2) return true; // 엔터프라이즈(2) 이상은 무제한
+    if (planLevel >= 2) return true; // 스탠다드(2) 이상은 무제한
 
     const { count } = await window.mySupabase.from('staff').select('id', { count: 'exact', head: true })
         .eq('factory_id', currentFactoryId);

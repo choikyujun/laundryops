@@ -134,7 +134,13 @@ Deno.serve(async (req) => {
         const { data: p } = await admin.from("pending_factories").select("*").eq("id", pending_id).maybeSingle();
         if (!p) return json({ error: "신청 데이터를 찾을 수 없습니다." }, 404);
         const fId = "f_" + Date.now();
-        const expiry = new Date(p.date || new Date()); expiry.setMonth(expiry.getMonth() + 5);
+        // 무료체험 만료일 = 신청일 + 3개월 (말일 보정: 8/31 + 3개월 -> 11/30)
+        // Edge Function은 UTC 런타임이므로 UTC 기준으로 계산해 toISOString()과 일치시킨다.
+        const _expBase = new Date(p.date || new Date());
+        const _expDay = _expBase.getUTCDate();
+        const expiry = new Date(Date.UTC(_expBase.getUTCFullYear(), _expBase.getUTCMonth() + 3, 1));
+        const _expLastDay = new Date(Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth() + 1, 0)).getUTCDate();
+        expiry.setUTCDate(Math.min(_expDay, _expLastDay));
         const res = await createAccount("factory", p.admin_id, p.admin_pw, { role: "factory", factory_id: fId }, "factories", {
           id: fId, name: p.name, admin_id: p.admin_id, ceo: (p.name || "") + " 대표",
           phone: p.phone, address: p.address, status: "operating", created_at: p.date,

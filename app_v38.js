@@ -321,7 +321,7 @@ window.backupFactoryData = async function() {
     
     // 1. Plan 체크 먼저 수행 (빠르게 팝업 띄우기)
     const { data: planData } = await window.mySupabase.from('factories').select('plan').eq('id', currentFactoryId).single();
-    if (!await window.checkAccess('DATA_BACKUP', planData, '데이터 백업은 엔터프라이즈 요금제 전용 기능입니다. \n [요금제 업그레이드] 해주세요')) return;
+    if (!await window.checkAccess('DATA_BACKUP', planData, '데이터 백업은 스탠다드 요금제 전용 기능입니다. \n [요금제 업그레이드] 해주세요')) return;
     
     if (!confirm('현재 데이터를 백업 파일로 저장하시겠습니까?')) return;
 
@@ -340,7 +340,7 @@ window.openRestoreDialog = async function() {
     if (await window.checkAdminExpired()) return;
 
     const { data: f } = await window.mySupabase.from('factories').select('plan').eq('id', currentFactoryId).single();
-    if (!await window.checkAccess('DATA_BACKUP', f, '데이터 복구는 엔터프라이즈 요금제 전용 기능입니다. \n [요금제 업그레이드] 해주세요')) return;
+    if (!await window.checkAccess('DATA_BACKUP', f, '데이터 복구는 스탠다드 요금제 전용 기능입니다. \n [요금제 업그레이드] 해주세요')) return;
     
     document.getElementById('restoreFile').click();
 };
@@ -899,6 +899,18 @@ window.openRegisterModal = function() {
 };
 
 let _submitLock = false;
+// [요금제] 만료일 계산: 기준일 + N개월, 말일 보정 (8/31 + 3개월 -> 11/30)
+// 보정식은 approvePayment(결제 승인)의 계산과 동일. 날짜 문자열화는
+// getTodayString()과 같은 로컬 시간대 기준 방식을 사용한다(UTC 변환 시 하루 밀림 방지).
+function addMonthsClamped(baseDate, months) {
+    const base = new Date(baseDate);
+    const originalDay = base.getDate();
+    const next = new Date(base.getFullYear(), base.getMonth() + months, 1);
+    const lastDayOfTargetMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(Math.min(originalDay, lastDayOfTargetMonth));
+    return new Date(next.getTime() - next.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+}
+
 window.submitRegistration = async function() {
     // 이중 클릭 방지
     if (_submitLock) return;
@@ -955,7 +967,7 @@ window.submitRegistration = async function() {
         status: 'operating',
         sub_status: 'trial',
         plan: '무료요금제',
-        plan_expiry: new Date(new Date().setMonth(new Date().getMonth() + 5)).toISOString().split('T')[0],
+        plan_expiry: addMonthsClamped(new Date(), 3),
         date: getTodayString()
     };
     
@@ -1549,7 +1561,7 @@ window.exportInvoicesToPDF = async function() {
 window.checkSpecialHotelAccess = async function(value) {
     if (value === 'special') {
         const { data: f } = await window.mySupabase.from('factories').select('*').eq('id', currentFactoryId).maybeSingle();
-        if (!await window.checkAccess('SPECIAL_HOTEL', f, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) {
+        if (!await window.checkAccess('SPECIAL_HOTEL', f, '특수거래처는 스탠다드 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) {
             // 제한에 걸렸으므로 다시 일반으로 돌려놓는다
             document.querySelector('input[name="h_type"][value="general"]').checked = true;
         }
@@ -1633,9 +1645,9 @@ window.saveNewHotel = async function() {
     // [추가] 라디오 버튼 값
     const selectedType = document.querySelector('input[name="h_type"]:checked').value;
 
-    // [추가] 특수거래처 제한 (엔터프라이즈 전용)
+    // [추가] 특수거래처 제한 (스탠다드 전용)
     if (selectedType === 'special') {
-        if (!await window.checkAccess('SPECIAL_HOTEL', factoryInfo, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) { _unlockHotelSubmit(); return; }
+        if (!await window.checkAccess('SPECIAL_HOTEL', factoryInfo, '특수거래처는 스탠다드 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) { _unlockHotelSubmit(); return; }
     }
 
     if (editingHotelIdForInfo) {
@@ -2149,9 +2161,7 @@ window.openFactoryModal = function(isSuperAdmin = false) {
       if(err) err.style.display = 'none';
   });
   document.getElementById('s_plan').value = '무료요금제';
-  const expiryDate = new Date();
-  expiryDate.setMonth(expiryDate.getMonth() + 5);
-  document.getElementById('s_planExpiry').value = expiryDate.toISOString().split('T')[0];
+  document.getElementById('s_planExpiry').value = addMonthsClamped(new Date(), 3);
   document.getElementById('s_subStatus').value = 'trial';
   document.getElementById('s_status').value = 'operating';
   document.getElementById('admin-only-settings').style.display = isSuperAdmin ? 'block' : 'none';
