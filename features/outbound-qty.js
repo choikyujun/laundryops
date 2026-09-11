@@ -243,24 +243,27 @@
         return Number(p[1]) + '/' + Number(p[2]);
     }
 
+    // 거래처 이름(#invoiceHotelName) 오른쪽에 붙인다.
+    // 주의: app_v38.js:3161 이 innerText 로 이름을 덮어쓰므로 그때 span 이 날아간다.
+    // _applyAll 이 렌더 이후에 돌기 때문에 매번 다시 붙는다.
     function _renderDateLine(info) {
-        var area = document.getElementById('invoiceFormArea');
+        var host = document.getElementById('invoiceHotelName');
         var line = document.getElementById(DATE_LINE_ID);
 
-        // 미대조 출고 0건이면 줄 자체를 숨긴다
-        if (!area || !info || info.count === 0) {
+        // 미대조 출고 0건이면 제거
+        if (!host || !info || info.count === 0) {
             if (line) line.parentNode.removeChild(line);
             return;
         }
 
-        if (!line) {
-            line = document.createElement('div');
+        if (!line || line.parentNode !== host) {
+            if (line) line.parentNode.removeChild(line);
+            line = document.createElement('span');
             line.id = DATE_LINE_ID;
-            line.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:6px;';
-            var wrap = area.querySelector('.table-scroll-wrap');
-            if (wrap) area.insertBefore(line, wrap); else area.appendChild(line);
+            line.style.cssText = 'font-size:12px;font-weight:400;color:#64748b;margin-left:10px;white-space:nowrap;';
+            host.appendChild(line);
         }
-        line.textContent = '호텔 출고 ' + info.dates.map(_fmtMD).join(' · ');
+        line.textContent = '출고 ' + info.dates.map(_fmtMD).join(' · ');
     }
 
     function _removeDateLine() {
@@ -291,7 +294,9 @@
             var known = _tableItemNames(table);
             Object.keys(info.totals).forEach(function (n) {
                 var q = Number(info.totals[n]) || 0;
-                if (!known[n] && q !== 0) extras.push(n + ' ' + q.toLocaleString() + '개');
+                // 단위는 붙이지 않는다 — 단가표에 없는 품목이라 단위를 알 방법이 없고,
+                // hotel_outbound_items 에도 단위 컬럼이 없다. 지어내지 않는다.
+                if (!known[n] && q !== 0) extras.push(n + ' ' + q.toLocaleString());
             });
         }
 

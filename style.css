@@ -247,3 +247,12 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
     background: #f1f5f9 !important;
     white-space: normal !important;
 }
+
+/* 명세서 작성 표 — 수량 입력칸 폭
+   app_v38.js:3197 이 인라인 style="width:60px" 를 박아 3자리(100 단위)가 잘린다.
+   app_v38.js 직접 수정 금지이므로 !important 로 인라인을 덮는다.
+   box-sizing:border-box 는 .admin-table input(style.css:22)에서 이미 적용됨. */
+#staffInvoiceBody .qty-input {
+    width: 80px !important;
+    min-width: 80px !important;
+}
