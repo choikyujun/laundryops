@@ -8,6 +8,13 @@
 (function () {
     // 현재 호텔 상태 캐시
     let _hId = null, _fId = null, _startDate = null, _tolerancePct = 5, _isSpecial = false;
+    let _hName = '';
+
+    // 월 누계 팝업 전용 월 (YYYY-MM). 섹션 월(#hotelInvoiceMonth)과 절대 공유하지 않는다.
+    // 공유하면 팝업에서 월을 바꿀 때 뒤 화면과 버튼 이름이 따라 바뀐다(PRD 3-3 위반).
+    // 열 때 섹션 월로 초기화하고, 닫으면 버린다.
+    let _popupMonth = null;
+    let _popupToken = 0;
 
     // KST(UTC+9) 기준 오늘 날짜 (YYYY-MM-DD)
     function _todayKST() {
@@ -39,6 +46,7 @@
         section.style.display = 'block';
         _hId = hData.id;
         _fId = hData.factory_id;
+        _hName = hData.name || '';
         _startDate = hData.outbound_start_date || null;
         _tolerancePct = hData.outbound_tolerance_pct != null ? hData.outbound_tolerance_pct : 5;
         _isSpecial = hData.contract_type === 'special' || hData.hotel_type === 'special';
@@ -389,31 +397,40 @@
         const _kstHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
         const isInputTime = _kstHour >= 5;
 
+        // 날짜는 M/D 로 줄인다 — 전체 날짜(2026-09-11)면 버튼이 210px 이 되어
+        // 320px 폰에서 합계 버튼과 합쳐 314px, 행(266px)을 48px 넘겨 밖으로 삐져나온다.
+        // 같은 파일의 출고 날짜 표기(fmtMD)와 같은 형식이라 일관적이다.
+        const _p = today.split('-');
+        const todayMD = _p.length === 3 ? Number(_p[1]) + '/' + Number(_p[2]) : today;
+
         let btnHtml = '', noticeHtml = '';
         if (isCurrentMonth) {
             if (!isInputTime) {
                 // 자정~오전 5시 비활성
-                btnHtml = `<button disabled style="background:#e5e7eb;color:#9ca3af;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:not-allowed;font-weight:700;opacity:0.6;white-space:nowrap;">
-                    ${ico(todayHasOb ? 'pencil' : 'plus')} 오늘 출고 ${todayHasOb ? '수정' : '입력'} (${today})
+                btnHtml = `<button disabled style="background:#e5e7eb;color:#9ca3af;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:not-allowed;font-weight:700;opacity:0.6;white-space:nowrap;">
+                    ${ico(todayHasOb ? 'pencil' : 'plus')} 오늘 출고 ${todayHasOb ? '수정' : '입력'} (${todayMD})
                 </button>`;
                 noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 현재는 입력 가능 시간이 아닙니다 (오전 5시부터 가능)</span>`;
             } else if (todayHasOb) {
-                btnHtml = `<button onclick="window.openOutboundInputModal('${today}', '${todayOb.id}')" style="background:#059669;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
-                    ${ico('pencil')} 오늘 출고 수정 (${today})
+                btnHtml = `<button onclick="window.openOutboundInputModal('${today}', '${todayOb.id}')" style="background:#059669;color:white;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
+                    ${ico('pencil')} 오늘 출고 수정 (${todayMD})
                 </button>`;
                 noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>`;
             } else {
-                btnHtml = `<button onclick="window.openOutboundInputModal('${today}')" style="background:var(--primary,#3b82f6);color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
-                    ${ico('plus')} 오늘 출고 입력 (${today})
+                btnHtml = `<button onclick="window.openOutboundInputModal('${today}')" style="background:var(--primary,#3b82f6);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
+                    ${ico('plus')} 오늘 출고 입력 (${todayMD})
                 </button>`;
                 noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>`;
             }
         }
 
-        // 태스크 2에서 여기 오른쪽 끝에 "M월 합계" 버튼이 들어간다.
-        const rowHtml = btnHtml
-            ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:${noticeHtml ? '6px' : '12px'};">${btnHtml}</div>`
-            : '';
+        // 월 합계 버튼 — 섹션의 현재 월 기준. 지난 달을 보고 있어도 항상 보인다.
+        // margin-left:auto 로 행 오른쪽 끝에 붙인다(버튼이 하나뿐이어도 오른쪽 정렬).
+        // 아이콘 없이 라벨만 — 320px 에서 "오늘 출고 수정 (9/11)" 과 한 행에 들어가야 한다.
+        const sumBtnHtml = `<button onclick="window.openObSummaryModal()" style="margin-left:auto;background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">${Number(month.slice(5, 7))}월 합계</button>`;
+
+        // 버튼 행은 월과 무관하게 항상 렌더한다(합계 버튼이 있으므로).
+        const rowHtml = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:${noticeHtml ? '6px' : '12px'};">${btnHtml}${sumBtnHtml}</div>`;
         const noticeRowHtml = noticeHtml ? `<div style="margin-bottom:12px;">${noticeHtml}</div>` : '';
         return rowHtml + noticeRowHtml;
     }
@@ -841,14 +858,111 @@
         }
     };
 
+    // ── 월 누계 팝업 ────────────────────────────────────────
+    // YYYY-MM 에 delta 개월을 더한다
+    function _shiftYm(ym, delta) {
+        const [y, m] = ym.split('-').map(Number);
+        const d = new Date(y, m - 1 + delta, 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    // 미래 월 차단 기준: KST 오늘의 월.
+    // 출고는 당일만 입력 가능하고(소급·미래 입력 경로 없음) 명세서도 미래 발행이 없으므로
+    // 다음 달 이후는 구조적으로 항상 비어 있다. 빈 표를 보여주는 대신 ▶ 를 비활성한다.
+    function _currentYm() {
+        return _todayKST().slice(0, 7);
+    }
+
+    window.openObSummaryModal = async function () {
+        if (!document.getElementById('obSummaryModal')) return;
+        _popupMonth = _sectionMonth();          // 열 때마다 섹션 월로 초기화
+        openModal('obSummaryModal');
+        await _renderSummaryModal();
+    };
+
+    // 월 이동. 섹션은 건드리지 않는다.
+    window.obSummaryShiftMonth = async function (delta) {
+        if (!_popupMonth) return;
+        const next = _shiftYm(_popupMonth, delta);
+        if (delta > 0 && next > _currentYm()) return;   // 미래 월 차단
+        _popupMonth = next;
+        await _renderSummaryModal();
+    };
+
+    window.closeObSummaryModal = function () {
+        closeModal('obSummaryModal');
+        _popupMonth = null;                     // 닫으면 버린다
+    };
+
+    async function _renderSummaryModal() {
+        const ym = _popupMonth;
+        const titleEl = document.getElementById('obSummaryTitle');
+        const navEl = document.getElementById('obSummaryNav');
+        const bodyEl = document.getElementById('obSummaryBody');
+        if (!titleEl || !navEl || !bodyEl) return;
+
+        const [y, m] = ym.split('-').map(Number);
+        titleEl.textContent = `${_hName ? _hName + ' · ' : ''}${y}년 ${m}월 누계`;
+
+        // ◀ ▶ — app_v38.js:614 페이징 버튼 스타일 재사용
+        const navBtn = (disabled) => `padding:6px 12px;border-radius:6px;border:1px solid #cbd5e1;cursor:${disabled ? 'not-allowed' : 'pointer'};font-size:13px;background:white;color:#334155;opacity:${disabled ? '0.4' : '1'};`;
+        const nextDisabled = _shiftYm(ym, 1) > _currentYm();
+        navEl.innerHTML = `
+            <button onclick="window.obSummaryShiftMonth(-1)" style="${navBtn(false)}">◀</button>
+            <span style="font-size:13px;font-weight:700;color:#334155;min-width:76px;text-align:center;">${ym}</span>
+            <button onclick="window.obSummaryShiftMonth(1)" ${nextDisabled ? 'disabled' : ''} style="${navBtn(nextDisabled)}">▶</button>
+            <button onclick="window.printObSummary()" style="margin-left:auto;background:var(--primary,#3b82f6);color:white;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">${ico('printer')} 인쇄</button>`;
+
+        // 조회가 비동기라 로딩 표시가 필요하다
+        bodyEl.innerHTML = '<div style="padding:24px;text-align:center;color:#6b7280;font-size:13px;">불러오는 중...</div>';
+
+        const myToken = ++_popupToken;
+        let html;
+        try {
+            const data = await _loadMonthData(ym);
+            html = _summaryHTML(data);
+        } catch (e) {
+            console.error('[outbound-compare] 월 누계 조회 실패:', e);
+            html = '<div style="padding:20px;text-align:center;color:#991b1b;font-size:13px;">데이터를 불러오지 못했습니다.</div>';
+        }
+        if (myToken !== _popupToken) return;     // 더 최근 이동이 있었다면 폐기
+        if (_popupMonth !== ym) return;          // 그 사이 월이 바뀌었으면 폐기
+        bodyEl.innerHTML = html;
+    }
+
+    // [태스크 4] 인쇄. 지금은 자리만.
+    window.printObSummary = function () {
+        console.info('[outbound-compare] 월 누계 인쇄는 태스크 4에서 구현됩니다.');
+    };
+
     // 내부 함수 노출 (테스트·후속 태스크용). outbound-qty.js 의 _obQtyInternals 와 동일한 방식.
     window._obCompareInternals = {
         loadMonthData: _loadMonthData,
         buildSummaryHTML: _buildSummaryHTML,
         buildDailyHTML: _buildDailyHTML,
         buildButtonRow: _buildButtonRow,
-        sectionMonth: _sectionMonth
+        sectionMonth: _sectionMonth,
+        popupMonth: function () { return _popupMonth; },
+        shiftYm: _shiftYm,
+        currentYm: _currentYm
     };
+
+    // ── 월 누계 팝업 DOM 초기화 (body에 한 번만 추가) ─────
+    (function _initSummaryModal() {
+        if (document.getElementById('obSummaryModal')) return;
+        const modal = document.createElement('div');
+        modal.id = 'obSummaryModal';
+        modal.className = 'modal-overlay';
+        modal.style.cssText = 'display:none;align-items:center;justify-content:center;z-index:1002;';
+        modal.innerHTML = `
+        <div class="modal-content" style="width:560px;max-width:95vw;padding:24px;border-radius:12px;position:relative;max-height:88vh;overflow-y:auto;">
+            <button onclick="window.closeObSummaryModal()" style="position:absolute;right:14px;top:14px;border:none;background:none;font-size:22px;cursor:pointer;color:#6b7280;">×</button>
+            <h3 id="obSummaryTitle" style="margin:0 0 14px 0;font-size:15px;font-weight:700;padding-right:28px;color:var(--primary,#3b82f6);"></h3>
+            <div id="obSummaryNav" style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap;"></div>
+            <div id="obSummaryBody"></div>
+        </div>`;
+        document.body.appendChild(modal);
+    })();
 
     // ── 출고 입력 모달 DOM 초기화 (body에 한 번만 추가) ───
     (function _initModal() {
