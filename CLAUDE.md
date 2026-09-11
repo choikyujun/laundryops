@@ -164,7 +164,8 @@ git push origin main
 
 - 갱신 보장은 `?v=` 태그가 아니라 Vercel이 내려주는 `cache-control: max-age=0, must-revalidate` 헤더가 하고 있다. SW의 Cache Storage는 **HTTP 캐시 헤더를 따르지 않아** 이를 무력화한다. 게다가 SW는 기기에 등록돼 남아 잘못 배포하면 push로 못 고친다.
 - 이 앱은 Supabase 실시간 쿼리가 화면의 전부라 **오프라인에서 볼 화면이 없다.** 캐시해봐야 빈 껍데기다.
-- 아이콘 재생성: `make_icons.py`의 `SRC`(원본)와 `OUT`(출력 경로)를 바꾸고 실행한다. Pillow 필요.
+- 아이콘 재생성: `python3 make_icons.py` — 경로 수정 없이 루트에 6종이 다시 만들어진다(Pillow 필요).
+  원본을 바꿀 때는 `assets/logo-src.jpeg`를 갈아끼우고 다시 실행한다.
 
 ---
 

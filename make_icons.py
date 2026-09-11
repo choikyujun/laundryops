@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 LaundryOps PWA 아이콘 생성
-원본 한 장에서 아이콘 5종을 만든다. 원본만 갈아끼우면 재실행 가능.
+원본 한 장에서 아이콘 6종을 만든다 — icon-192 / icon-512 /
+icon-maskable-512 / apple-touch-icon / favicon-32 / favicon.ico.
+
+경로는 이 파일 위치를 기준으로 풀리므로 어느 위치에서 실행해도 된다.
+원본을 바꿀 때는 assets/logo-src.jpeg 를 갈아끼우고 다시 실행한다.
 
 배경 처리 규칙 (iOS/안드로이드 실동작 기준):
 - icon-192 / icon-512 : 투명 배경. 안드로이드가 알아서 배치한다.
@@ -13,8 +17,10 @@ LaundryOps PWA 아이콘 생성
 from PIL import Image, ImageDraw
 import os
 
-SRC = '/mnt/user-data/uploads/KakaoTalk_Photo_2026-09-11-21-19-38.jpeg'
-OUT = '/home/claude/icons'
+# repo 루트 — 이 파일이 있는 곳이다. 실행 위치와 무관하게 고정된다.
+ROOT = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(ROOT, 'assets', 'logo-src.jpeg')
+OUT = ROOT                # 아이콘은 루트에 바로 놓는다(Vercel 이 루트를 서빙한다)
 BG = (255, 255, 255)      # 배경색 (apple-touch / maskable)
 TOL = 26                  # 배경 제거 허용 오차
 
