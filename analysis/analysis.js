@@ -199,7 +199,7 @@ window.loadAnalysisTab = async function () {
         <div class="analysis-section-title">
           <h4>📈 월별 연도 비교</h4>
           <span class="an-badge">연도별</span>
-          <span style="font-size:11px; color:#64748b;">※ 연도를 선택하거나 '전체 연도'로 여러 해를 나란히 비교합니다</span>
+          <span style="font-size:11px; color:#64748b;">※ 연도를 선택하거나 '전체 연도'로 여러 해를 나란히 비교합니다 (차감 명세서 제외, 정액제 월 고정액 포함)</span>
         </div>
         <div class="analysis-ctrl">
           <select id="an-year-monthly">
@@ -955,6 +955,36 @@ window.renderWeeklyChart = async function () {
   }
 };
 
+/* =============================================================
+ * 월별 연도 비교 차트 — 집계 기준 정정 (2026-09-11)
+ * -------------------------------------------------------------
+ * [고친 버그]
+ *   기존 조회는 .range()/.limit()/.order() 가 전부 없어 PostgREST 행 상한에서
+ *   잘렸다. 전체 거래처 + 여러 달이면 상한을 넘겨 일부 월이 통째로 0 으로
+ *   그려졌다(개별 거래처는 행이 적어 증상이 안 났다). 정렬도 없어 어느 월이
+ *   빠지는지 비결정적이었다.
+ *   그 밖에 차감 명세서가 매출에 섞이고, 정액제 매출은 통째로 빠져 있었다.
+ *
+ * [집계 기준 — computeMonthlyRevenue 로 통일]
+ *   직접 조회하지 않고 window.computeMonthlyRevenue(factory-expenses.js:255)를
+ *   호출한다. 주간 차트 주석(:799)이 "생성월 게이팅은 computeMonthlyRevenue
+ *   기준을 따름" 이라고 지목한 그 함수이고, 이 차트와 같은 월 단위라 그대로 맞는다.
+ *   여기서 다시 구현하면 같은 규칙이 세 벌이 되어 또 어긋난다.
+ *
+ *   그 함수가 보장하는 것:
+ *     - 월별 분할 + .range() 페이지네이션 → 행 상한 우회
+ *     - hotels!inner(contract_type='unit') → 단가제 매출만
+ *     - staff_name 조회 후 '관리자(차감)' 접두 행 제외
+ *     - 정액제: fixed_amount 를 생성월(created_at) 이후 월에 가산,
+ *       운영중지월(inactive_at) 부터 제외 (과거 달 보존)
+ *     - 개별 거래처 선택 시 계약일 이전 월은 0
+ *
+ * [주간 차트와 다른 점 — 의도된 것]
+ *   주간 차트는 일 단위라 정액제를 막대에 분산하지 않고 옆에 따로 적는다.
+ *   이 차트는 월 단위라 분산이 필요 없어 막대에 그대로 포함한다.
+ *   (주간 차트 주석 :799 — "입금확인은 월 단위라 정액 반영이 가능하지만,
+ *    여기선 일 단위라 분산 불가")
+ * ============================================================= */
 window.renderMonthlyYearChart = async function () {
   try {
     const sel = document.getElementById('an-hotel-monthly');
@@ -962,28 +992,51 @@ window.renderMonthlyYearChart = async function () {
     const selY = document.getElementById('an-year-monthly');
     const year = selY ? selY.value : '';             // '' = 전체 연도
     const factoryId = _getFactoryId();
+    if (!factoryId) { alert('로그인 후 이용 가능합니다.'); return; }
 
-    let q = window.mySupabase
-      .from('invoices')
-      .select('hotel_id, date, total_amount')
-      .eq('factory_id', factoryId);
-    if (hotelId) q = q.eq('hotel_id', hotelId);
-    if (year) q = q.gte('date', `${year}-01-01`).lte('date', `${year}-12-31`);
+    if (typeof window.computeMonthlyRevenue !== 'function') {
+      alert('매출 집계 모듈이 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.');
+      return;
+    }
 
-    const { data: invoices, error } = await q;
-    if (error) return alert('조회 오류: ' + error.message);
-    if (!invoices || invoices.length === 0) { alert('해당 조건의 매출 데이터가 없습니다.'); return; }
+    // 대상 연도 — 연도 드롭다운이 이미 "최초 매출 연도 ~ 올해" 로 채워져 있으므로
+    // '전체 연도' 일 때는 그 옵션 목록을 그대로 쓴다(별도 조회 불필요).
+    const yearList = year
+      ? [year]
+      : Array.from(selY ? selY.options : []).map(o => o.value).filter(Boolean).sort();
+    if (yearList.length === 0) { alert('조회할 연도가 없습니다.'); return; }
 
-    // 연도 × 월(1~12) 집계
+    const todayStr = (typeof getTodayString === 'function')
+      ? getTodayString()
+      : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const curYm = todayStr.slice(0, 7);
+
+    const fromYm = yearList[0] + '-01';
+    let toYm = yearList[yearList.length - 1] + '-12';
+    if (toYm > curYm) toYm = curYm;                  // 미래 달은 조회하지 않는다
+    if (fromYm > toYm) { alert('해당 조건의 매출 데이터가 없습니다.'); return; }
+
+    const out = await window.computeMonthlyRevenue({
+      factoryId: factoryId,
+      fromYm: fromYm,
+      toYm: toYm,
+      hotelFilter: hotelId || 'all'
+    });
+    const trend = (out && out.trend) || {};
+
+    // 'YYYY-MM' → 연도 × 월(1~12) 재배열
     const byYear = {};
-    invoices.forEach(inv => {
-      if (!inv.date) return;
-      const y = String(inv.date).slice(0, 4);
-      const m = parseInt(String(inv.date).slice(5, 7), 10);   // 1~12
+    Object.keys(trend).forEach(k => {
+      const y = k.slice(0, 4);
+      const m = parseInt(k.slice(5, 7), 10);
       if (!(m >= 1 && m <= 12)) return;
       byYear[y] = byYear[y] || {};
-      byYear[y][m] = (byYear[y][m] || 0) + Number(inv.total_amount || 0);
+      byYear[y][m] = Number(trend[k] || 0);
     });
+
+    if (!Object.keys(trend).some(k => Number(trend[k] || 0) !== 0)) {
+      alert('해당 조건의 매출 데이터가 없습니다.'); return;
+    }
 
     const years  = Object.keys(byYear).sort();                // 과거→최신
     const labels = Array.from({ length: 12 }, (_, i) => (i + 1) + '월');
