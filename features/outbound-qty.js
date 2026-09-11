@@ -144,7 +144,7 @@
     // 공장 휴무·명절이면 출고 N건이 명세서 1장에 묶이므로 "다음 1건"이 아니라
     // 미대조 출고 전부를 합산한다. 날짜·요일은 보지 않는다.
     async function _loadOutbound(hData, dateStr) {
-        var empty = { count: 0, dates: [], totals: {}, mode: 'new' };
+        var empty = { count: 0, dates: [], totals: {}, mode: 'new', lastDate: null, failed: true };
         if (!hData || !hData.id) return empty;
 
         // 수정 모드 판정 — openInvoiceModal(app_v38.js:3136)의 판정과 동일한 조건.
@@ -190,9 +190,26 @@
             // hotel_outbounds 에 UNIQUE(hotel_id, date) 가 있어 날짜는 중복되지 않는다
             dates: obs.map(function (o) { return o.date; }),
             totals: {},
-            mode: invoiceId ? 'edit' : 'new'
+            mode: invoiceId ? 'edit' : 'new',
+            lastDate: null,
+            failed: false
         };
-        if (obs.length === 0) return result;
+
+        if (obs.length === 0) {
+            // 신규 모드에서 미대조 출고가 0건이면 "출고 미입력" 을 알린다.
+            // 언제까지 들어왔는지 알아야 호텔이 멈춘 건지 판단할 수 있으므로 마지막 출고일을 함께 조회한다.
+            // invoice_id 무관 — 소진된 것까지 포함한 실제 마지막 입력일.
+            if (result.mode === 'new') {
+                var lastRes = await window.mySupabase
+                    .from('hotel_outbounds').select('date')
+                    .eq('hotel_id', hData.id)
+                    .order('date', { ascending: false })
+                    .limit(1);
+                if (lastRes.error) console.error('[outbound-qty] 마지막 출고일 조회 실패:', lastRes.error);
+                else if (lastRes.data && lastRes.data.length) result.lastDate = lastRes.data[0].date;
+            }
+            return result;
+        }
 
         // 품목 합계 — item_name(이름 문자열) 기준. 기존 대조 로직과 동일한 매칭.
         var itRes = await window.mySupabase
@@ -254,20 +271,38 @@
         var host = document.getElementById('invoiceHotelName');
         var line = document.getElementById(DATE_LINE_ID);
 
-        // 미대조 출고 0건이면 제거
-        if (!host || !info || info.count === 0) {
+        // 무엇을 띄울지 먼저 정한다
+        var text = null, color = null;
+        if (host && info && !info.failed) {
+            if (info.count > 0) {
+                text = '출고 ' + info.dates.map(_fmtMD).join(' · ');
+                color = '#64748b';
+            } else if (info.mode === 'new') {
+                // 출고 입력을 쓰는 거래처인데 미대조 출고가 0건 = 대조 장치가 멈춘 상태.
+                // 그냥 — 로 두면 "기능을 안 쓰는 거래처" 와 구분되지 않아 아무도 알아채지 못한다.
+                // 수정 모드는 제외 — 이미 묶인 건을 보는 중이라 0건이 정상이다.
+                text = info.lastDate
+                    ? '출고 미입력 (마지막 ' + _fmtMD(info.lastDate) + ')'
+                    : '출고 미입력';
+                color = '#92400e';
+            }
+        }
+
+        if (text === null) {
             if (line) line.parentNode.removeChild(line);
             return;
         }
 
+        // 이름 요소가 innerText 로 덮이면 span 이 날아가므로 부모를 확인해 다시 붙인다
         if (!line || line.parentNode !== host) {
             if (line) line.parentNode.removeChild(line);
             line = document.createElement('span');
             line.id = DATE_LINE_ID;
-            line.style.cssText = 'font-size:12px;font-weight:400;color:#64748b;margin-left:10px;white-space:nowrap;';
+            line.style.cssText = 'font-size:12px;font-weight:400;margin-left:10px;white-space:nowrap;';
             host.appendChild(line);
         }
-        line.textContent = '출고 ' + info.dates.map(_fmtMD).join(' · ');
+        line.textContent = text;
+        line.style.color = color;
     }
 
     function _removeDateLine() {
@@ -465,7 +500,8 @@
             info = await _loadOutbound(hData, dateStr);
         } catch (e) {
             console.error('[outbound-qty] 출고 조회 중 오류:', e);
-            info = { count: 0, dates: [], totals: {}, mode: 'new' };
+            // failed: true — 조회가 깨진 것을 "출고 미입력" 으로 오인해 알리면 안 된다
+            info = { count: 0, dates: [], totals: {}, mode: 'new', lastDate: null, failed: true };
         }
         if (myToken !== _token) return;
 

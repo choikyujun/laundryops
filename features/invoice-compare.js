@@ -1,6 +1,6 @@
 // ============================================================
 // invoice-compare.js — 거래명세서 목록 [비교] 기능
-// 세탁공장 대표 화면: 명세서 1건 ↔ N번째 매칭 출고 대조 모달
+// 세탁공장 대표 화면: 명세서 1건 ↔ 그 명세서에 묶인 출고 N건 대조 모달 (invoice_id 기준)
 // 대조 표·판정·확인상태는 outbound-compare.js window._obCompareUtils 재사용
 // ============================================================
 (function () {
@@ -35,43 +35,41 @@
             const isSpecial = hData.contract_type === 'special' || hData.hotel_type === 'special';
             const startDate = hData.outbound_start_date || null;
 
-            // 2. 월 범위 계산
-            const month = invDate.slice(0, 7);
-            const [y, m] = month.split('-').map(Number);
-            const monthStart = month + '-01';
-            const monthEnd = month + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0');
-
-            // 3. 해당 월 전체 명세서 (outbound-compare.js와 동일 필터 — 순번 일치)
-            const { data: rawInvs } = await window.mySupabase
+            // 2. 대상 명세서 (outbound-compare.js와 동일 필터)
+            //    월 내 순번 매칭을 폐기했으므로 그 달 전체를 끌어올 필요가 없다.
+            const { data: targetInv } = await window.mySupabase
                 .from('invoices')
                 .select('id, date, staff_name, confirmed_at, confirmed_by')
-                .eq('hotel_id', hotelId)
-                .gte('date', monthStart)
-                .lte('date', monthEnd)
-                .order('date', { ascending: true });
-            const invoices = (rawInvs || []).filter(inv => {
-                if (inv.staff_name && inv.staff_name.startsWith('관리자(차감)')) return false;
-                if (startDate && inv.date < startDate) return false;
-                return true;
-            });
+                .eq('id', invId)
+                .maybeSingle();
 
-            // 4. 대상 명세서의 월 내 순번 → 매칭 출고 찾기
-            const invIdx = invoices.findIndex(i => i.id === invId);
-            const targetInv = invoices[invIdx] || null;
+            if (!targetInv) {
+                if (body) body.innerHTML = '<div style="color:red;padding:16px;">명세서를 찾을 수 없습니다.</div>';
+                return;
+            }
+            if (targetInv.staff_name && targetInv.staff_name.startsWith('관리자(차감)')) {
+                if (titleEl) titleEl.textContent = `${hData.name}  ·  ${invDate} 명세서 비교`;
+                if (body) body.innerHTML = '<div style="background:#f1f5f9;border-radius:8px;padding:16px;font-size:12px;color:#6b7280;">월말 차감 명세서는 출고 대조 대상이 아닙니다.</div>';
+                return;
+            }
+            if (startDate && targetInv.date < startDate) {
+                if (titleEl) titleEl.textContent = `${hData.name}  ·  ${invDate} 명세서 비교`;
+                if (body) body.innerHTML = `<div style="background:#f1f5f9;border-radius:8px;padding:16px;font-size:12px;color:#6b7280;">출고 입력 기능 시작일(${startDate}) 이전 명세서라 대조 대상이 아닙니다.</div>`;
+                return;
+            }
 
-            // 5. 해당 월 전체 출고 (동일 순서 기반 매칭)
+            // 3. 이 명세서에 묶인 출고 — invoice_id 기준. 날짜 범위를 걸지 않는다.
+            //    (outbound-compare.js / outbound-qty.js 와 같은 조건. 세 화면의 숫자가 일치해야 한다)
             const { data: rawObs } = await window.mySupabase
                 .from('hotel_outbounds')
-                .select('id, date')
-                .eq('hotel_id', hotelId)
-                .gte('date', monthStart)
-                .lte('date', monthEnd)
+                .select('id, date, invoice_id')
+                .eq('invoice_id', invId)
                 .order('date', { ascending: true });
-            const matchedOb = (rawObs || [])[invIdx] || null;
+            const matchedObs = rawObs || [];
 
-            // 6. 명세서 품목
+            // 4. 명세서 품목
             const invItemMap = {};
-            if (targetInv) {
+            {
                 const { data: iItems } = await window.mySupabase
                     .from('invoice_items')
                     .select('invoice_id, name, qty')
@@ -82,20 +80,20 @@
                 });
             }
 
-            // 7. 출고 품목
+            // 5. 출고 품목
             const obItemMap = {};
-            if (matchedOb) {
+            if (matchedObs.length > 0) {
                 const { data: oItems } = await window.mySupabase
                     .from('hotel_outbound_items')
                     .select('outbound_id, item_name, qty')
-                    .eq('outbound_id', matchedOb.id);
+                    .in('outbound_id', matchedObs.map(o => o.id));
                 (oItems || []).forEach(it => {
                     if (!obItemMap[it.outbound_id]) obItemMap[it.outbound_id] = {};
                     obItemMap[it.outbound_id][it.item_name] = (obItemMap[it.outbound_id][it.item_name] || 0) + Number(it.qty || 0);
                 });
             }
 
-            // 8. 단가표 품목 (sort_order 순)
+            // 6. 단가표 품목 (sort_order 순)
             const { data: priceRows } = await window.mySupabase
                 .from('hotel_item_prices')
                 .select('name, unit, category_name')
@@ -105,33 +103,34 @@
                 .order('created_at', { ascending: true });
             const priceItems = priceRows || [];
 
-            // 9. _obCompareUtils 확인 (outbound-compare.js 의존)
+            // 7. _obCompareUtils 확인 (outbound-compare.js 의존)
             const utils = window._obCompareUtils;
             if (!utils) {
                 if (body) body.innerHTML = '<div style="color:red;padding:16px;">비교 모듈 미로드 — 페이지를 새로고침해 주세요.</div>';
                 return;
             }
 
-            // 10. 거래처 확인 상태 배지
+            // 8. 거래처 확인 상태 배지
             const today = _todayKST();
             const { badgeHtml } = utils.confirmStatus(targetInv, today);
 
-            // 11. 대조 표 HTML (outbound-compare.js 로직 재사용)
-            const tableHtml = utils.buildDetailTable(matchedOb, targetInv, obItemMap, invItemMap, priceItems, tolerancePct, isSpecial);
+            // 9. 대조 표 HTML (outbound-compare.js 로직 재사용)
+            const tableHtml = utils.buildDetailTable(matchedObs, targetInv, obItemMap, invItemMap, priceItems, tolerancePct, isSpecial);
 
-            // 12. 모달 제목
+            // 10. 모달 제목
             if (titleEl) titleEl.textContent = `${hData.name}  ·  ${invDate} 명세서 비교`;
 
-            // 13. 출고 매칭 상태 안내
+            // 11. 출고 매칭 상태 안내
             let matchInfoHtml;
-            if (!matchedOb) {
-                matchInfoHtml = `<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-                    ⚠ 거래처 출고 미입력 — 이 명세서에 대응하는 호텔 출고가 등록되어 있지 않습니다.
+            if (matchedObs.length === 0) {
+                matchInfoHtml = `<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:12px;">
+                    거래처 출고 미입력 — 이 명세서에 묶인 호텔 출고가 없습니다.
                 </div>`;
             } else {
+                // 휴무·명절이면 출고 N건이 명세서 1장에 묶인다. 묶인 날짜를 모두 보여준다.
+                const obDates = matchedObs.map(o => o.date).join(', ');
                 matchInfoHtml = `<div style="font-size:12px;color:#6b7280;margin-bottom:10px;">
-                    출고일: <strong>${matchedOb.date}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;명세서일: <strong>${invDate}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;허용 오차 ±${tolerancePct}%
-                    &nbsp;&nbsp;|&nbsp;&nbsp;월 ${invIdx + 1}번째 대응 쌍
+                    출고일: <strong>${obDates}</strong>${matchedObs.length > 1 ? ` (${matchedObs.length}건)` : ''}&nbsp;&nbsp;|&nbsp;&nbsp;명세서일: <strong>${invDate}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;허용 오차 ±${tolerancePct}%
                 </div>`;
             }
 

@@ -4,7 +4,7 @@
 > 대상 제품: LaundryOps v38
 
 ## 현재 단계
-**개발 진행 중.** 태스크 0~6 완료. 다음: 태스크 7(대조 짝짓기 기준 교체).
+**개발 진행 중.** 태스크 0~7 + 보강 2건 완료. 다음: 태스크 8(완료 정의 대조 + 최종 점검).
 
 ## 단계 게이트
 | 단계 | 상태 | 메모 |
@@ -12,7 +12,7 @@
 | 기획 (planner) | 승인 | 2026-09-11. `01-prd-출고수량.md` |
 | 설계 (architect) | 승인 | 2026-09-11. `02-architecture-출고수량.md` |
 | 디자인 (designer) | 생략 | 기존 v38 UI 패턴 재활용(대조 화면 색 규칙·표 구조). 열 1개 추가라 별도 스펙 불필요 |
-| 개발 (dev) | 진행 중 | 태스크 0~6 완료. features/outbound-qty.js + outbound-compare.js(판정·판정식 노출). app_v38.js 무변경 확인 |
+| 개발 (dev) | 진행 중 | 태스크 0~7 완료. outbound-qty.js / outbound-compare.js / invoice-compare.js. app_v38.js 무변경 확인 |
 | 검증 (qa) | 대기 중 | 태스크 1 배포 후 안드로이드 실기기 확인 — 사장님 확인 대기 |
 | 배포준비 | 대기 | dist/ 불필요(루트 서빙) |
 | 마케팅 | 해당 없음 | 내부 기능 |
@@ -61,10 +61,19 @@
 | 2026-09-11 | 저장 성공 판정 = **`loadStaffInvoiceList` 호출 여부 + 폼 숨김**, 둘 다 요구 | DOM 추론 하나보다 확실. `app_v38.js:1129` 는 성공 경로에서만 호출되고 실패 경로는 전부 early return. 두 신호 중 하나라도 없으면 소진하지 않는다(안전측 — 미소진은 허용, 잘못된 소진은 불가) | 개발 |
 | 2026-09-11 | 신규/수정 구분 = `invoice_id` 로 묶인 출고 존재 여부(데이터) | 사장님 지시. `editModeBadge` 같은 DOM 상태는 취약. 부수 효과로 과거 소진 실패분이 다음 저장 때 복구됨(의도) | 사장님 |
 | 2026-09-11 | `currentFactoryId` 는 맨이름으로 읽고 `localStorage` 폴백 | `app_v38.js:140` 이 최상위 `let` 이라 `window` 에 없다. 같은 전역 렉시컬 스코프라 접근 가능(`outbound-compare.js` 의 `currentHotelId` 와 동일 패턴). TDZ 대비 try/catch | 개발 |
+| 2026-09-11 | 월 누계 합산 단위 = **"출고가 묶인 명세서"** | 기존은 "ob·inv 둘 다 있는 쌍". 이제 한 명세서에 출고 N건이 묶이므로 단위를 명세서로 바꿨다. 그 명세서 품목 + 묶인 출고 전부를 더한다. 세탁 대기·출고 미입력은 양쪽 다 제외 — 한쪽만 더하면 누계가 기울어 판정이 무의미 | 개발 |
+| 2026-09-11 | 묶인 출고 조회에 **날짜 범위를 걸지 않음** | 월말 출고가 다음 달 1일 명세서에 묶이는 경우 날짜로 자르면 품목이 누락돼 멀쩡한 건이 "확인 필요"로 뜬다. 세 화면(작성·거래처 대조·관리자 비교)이 모두 `invoice_id` 단독 조건이라 숫자가 일치한다 | 개발 |
+| 2026-09-11 | `outbound-compare.js` 의 `invoices.select` 에 `staff_name` 추가 | 필터는 `inv.staff_name` 을 보는데 select 에 없어 **차감 제외 규칙이 동작하지 않고 있었다**(기존 결함). `invoice-compare.js` 는 제대로 select 해 두 화면이 다른 답을 내던 상태 | 개발 |
+| 2026-09-11 | 일자 셀 기준 = 출고일 → **명세서일**(묶인 출고일은 작은 글씨로 병기) | 한 행이 명세서 1건을 뜻하게 됐고 확인 기한도 명세서일 기준. 출고가 여러 날일 수 있어 하나를 대표로 쓸 수 없다 | 개발 |
+| 2026-09-11 | 작성 화면에 **"출고 미입력 (마지막 M/D)"** 표시 | 사장님 지시. 호텔이 출고 입력을 멈추면 `—` 만 남아 "기능을 안 쓰는 거래처" 와 구분되지 않는다. 대조 장치가 멈춘 것을 아무도 모르는 상태가 된다. 주의색 `#92400e`, 팝업 없음 | 사장님 |
+| 2026-09-11 | 마지막 출고일은 `invoice_id` 무관하게 조회 | 소진된 것까지 포함한 **실제 마지막 입력일**이어야 "언제부터 멈췄나" 를 알 수 있다 | 개발 |
+| 2026-09-11 | 수정 모드에서는 "출고 미입력" 을 표시하지 않음 | 이미 묶인 건을 보는 중이라 미대조 0건이 정상 상태 | 사장님 |
+| 2026-09-11 | 조회 실패 시 `failed: true` 로 표시하고 아무것도 렌더하지 않음 | 쿼리가 깨진 것을 "출고 미입력" 으로 알리면 오탐. 테스트가 이 구멍을 잡아냄 | 개발 |
 
-## 알려진 결함 (이 작업으로 함께 해소)
+## 알려진 결함 (이 작업으로 해소됨)
 
-**기존 대조 로직이 휴무마다 밀린다.** `outbound-compare.js:113-118`이 월 내 순번으로만 짝을 맺어, 출고 2건 : 명세서 1건이 되는 휴무 주부터 한 칸씩 어긋난다. 한 달이면 4~5칸. `invoice-compare.js:67-69`도 동일.
+- [x] ~~**기존 대조 로직이 휴무마다 밀린다.**~~ → **해결(2026-09-11, 태스크 7).** 월 내 순번 매칭을 `hotel_outbounds.invoice_id` 그룹핑으로 교체. `outbound-compare.js` + `invoice-compare.js` 동시 적용.
+- [x] ~~**차감 명세서 제외가 동작하지 않음.**~~ → **해결.** `outbound-compare.js` 의 `invoices.select` 에 `staff_name` 이 빠져 있어 필터가 항상 통과하고 있었다(`invoice-compare.js` 는 정상). 두 화면이 다른 답을 내던 상태를 바로잡음.
 
 ## 태스크 2 실행 결과 (2026-09-11, 사장님 Supabase 에디터)
 - `invoices.id` / `hotel_outbounds.id` **둘 다 text** → A안 적용
@@ -86,6 +95,21 @@
 - [x] 명세서 삭제 경로 **4곳** (app_v38.js:661, 1114, 1388, 7504) — `on delete set null`이 전부 커버, 되돌림 로직 불필요
 - [x] `.chart-container` = `#invoiceFormArea` 자신(index.html:835). **sticky는 안 깨짐** (스크롤 컨테이너 `.table-scroll-wrap`이 그 안쪽). 진짜 장애물은 style.css:34-35의 `display` 규칙
 - [x] RLS update 권한 **있음** — `hob_rw ... for all`, `role in ('factory','staff') and factory_id = jwt_factory()` (laundryops_auth_rls.sql:131). Supabase Auth 실사용 확인(app_v38.js:2972). **라이브 DB 적용 여부는 태스크 2에서 확인**
+
+## 소급 입력 가능 여부 (2026-09-11 코드 확인)
+
+**소급 입력 불가 — 설계상 고려 불필요.** 호텔이 며칠 밀린 날짜를 몰아 입력해 한 명세서에 합산되는 상황은 UI 경로로 발생하지 않는다.
+
+근거:
+- `hotel_outbounds` 쓰기 경로는 **단 한 곳** — `outbound-compare.js:743` `saveOutboundInput()` 의 insert
+- 모달 호출처 3곳이 넘기는 `date` 가 전부 `today(KST)`
+  - `:330`, `:337` — `today` 리터럴
+  - `:259` — `invDate || today`. 진입 조건이 `(!invDate || invDate === today)` 라 `invDate` 가 있으면 오늘뿐. 게다가 `obs:[]` 항목은 명세서에서만 생기므로 `invDate` 는 항상 존재
+- 이중 가드: `openOutboundInputModal` `:620` `date < today` 차단, `saveOutboundInput` `:709` 저장 직전 `date < _todayKST()` 재차단 (탭 열어둔 채 자정 넘길 때 대비)
+- 모달에 날짜 선택 UI 없음 — `#outboundInputDate` 는 읽기 전용 `<div>` 텍스트(`:810`)
+- DB `UNIQUE(hotel_id, date)` 로 같은 날 중복 입력도 불가
+
+남는 이론적 경로(제품 경로 아님): 가드가 `date < today` 라 **미래 날짜는 통과**한다. 다만 미래 날짜를 넘기는 호출처가 없고, DB 레벨 CHECK 제약도 없어 API 직접 호출로는 가능. 이번 범위 밖이라 수정하지 않음.
 
 ## 알려진 한계 (태스크 6)
 - **저장 성공 판정은 부수 효과 관찰이다.** `saveAndPrintInvoice` 가 반환값이 없고 `invoiceId` 가 지역 `let`(app_v38.js:1067)이라 직접 받을 방법이 없다.
@@ -123,7 +147,8 @@
 - [x] `01-prd-출고수량.md` — 기획
 - [x] `02-architecture-출고수량.md` — 설계(스키마·CSS·태스크·킥오프)
 - [ ] 디자인 — 생략(기존 UI 재활용)
-- [x] `features/outbound-qty.js` — 태스크 1(클래스) + 3(열 구조) + 4(조회·합계·날짜·미등록) + 5(차이 표시) + 6(소진). 태스크 7에서 대조 쪽 확장
-- [x] `features/outbound-compare.js` — `_isOutboundEnabled` 추출 + `diffCalc` 래퍼, `window._obCompareUtils` 노출 (태스크 7에서 짝짓기 기준 교체 예정)
+- [x] `features/outbound-qty.js` — 태스크 1(클래스) + 3(열 구조) + 4(조회·합계·날짜·미등록) + 5(차이 표시) + 6(소진) + 보강(출고 미입력 알림)
+- [x] `features/outbound-compare.js` — `_isOutboundEnabled`·`diffCalc` 노출 + **짝짓기 `invoice_id` 기준 교체(태스크 7)** + 차감 필터 수정
+- [x] `features/invoice-compare.js` — 짝짓기 `invoice_id` 기준 교체, 순번 문구 제거, 차감·시작일 이전 안내 추가
 - [x] `style.css` — `.admin-table.inv-scroll` 블록 추가 (style.css:190~)
 - [x] `index.html` — 스크립트 태그 추가, `style.css?v=20260911_1` 캐시 갱신

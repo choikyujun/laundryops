@@ -2,6 +2,7 @@
 // outbound-compare.js — 출고·명세서 대조 + 명세서 확인(확정)
 // 신규 기능: 2026-06-05
 // 적용 대상: contract_type !== 'fixed' (단가제+특수거래처)
+// 짝짓기: hotel_outbounds.invoice_id 기준 (2026-09-11, 월 내 순번 매칭 폐기)
 // 특수거래처: category_name 섹션별 그룹핑
 // ============================================================
 (function () {
@@ -45,6 +46,17 @@
         await _render();
     };
 
+    // 출고 N건의 품목 합계 — 한 명세서에 묶인 출고를 하나로 본다
+    function _sumObItems(obs, obItemMap) {
+        const sum = {};
+        (obs || []).forEach(o => {
+            Object.entries(obItemMap[o.id] || {}).forEach(([n, q]) => {
+                sum[n] = (sum[n] || 0) + q;
+            });
+        });
+        return sum;
+    }
+
     // ── 렌더링 ─────────────────────────────────────────────
     async function _render() {
         if (!_hId) return; // loadOutboundSection을 거치지 않은 직접 호출 방어
@@ -63,7 +75,7 @@
         // 1. 명세서 (outbound_start_date 이후, 차감 제외)
         const { data: rawInvs } = await window.mySupabase
             .from('invoices')
-            .select('id, date, confirmed_at, confirmed_by')
+            .select('id, date, staff_name, confirmed_at, confirmed_by')
             .eq('hotel_id', _hId)
             .gte('date', monthStart)
             .lte('date', monthEnd)
@@ -88,15 +100,35 @@
             });
         }
 
-        // 3. 출고 목록
-        const { data: rawObs } = await window.mySupabase
+        // 3. 출고 목록 — invoice_id 기준. 두 갈래로 나눠 가져온다.
+        //  (a) 이번 달 명세서에 묶인 출고: 날짜 범위를 걸지 않는다.
+        //      월말 출고가 다음 달 1일 명세서에 묶이는 경우를 날짜로 자르면 품목이 누락돼
+        //      멀쩡한 건이 "확인 필요"로 뜬다. 명세서 기준으로만 모은다.
+        //      (outbound-qty.js 의 수정 모드 조회와 같은 조건 — 작성 화면과 숫자가 일치해야 한다)
+        //  (b) 아직 명세서가 붙지 않은 출고: 이번 달분만, 기능 시작일 이후. → "세탁 대기"
+        let boundObs = [];
+        if (invoices.length > 0) {
+            const { data: rawBound } = await window.mySupabase
+                .from('hotel_outbounds')
+                .select('id, date, invoice_id')
+                .eq('hotel_id', _hId)
+                .in('invoice_id', invoices.map(i => i.id))
+                .order('date', { ascending: true });
+            boundObs = rawBound || [];
+        }
+
+        let pendingQ = window.mySupabase
             .from('hotel_outbounds')
-            .select('id, date')
+            .select('id, date, invoice_id')
             .eq('hotel_id', _hId)
+            .is('invoice_id', null)
             .gte('date', monthStart)
-            .lte('date', monthEnd)
-            .order('date', { ascending: true });
-        const outbounds = rawObs || [];
+            .lte('date', monthEnd);
+        if (_startDate) pendingQ = pendingQ.gte('date', _startDate);
+        const { data: rawPending } = await pendingQ.order('date', { ascending: true });
+        const pendingObs = rawPending || [];
+
+        const outbounds = boundObs.concat(pendingObs);
 
         // 4. 출고 품목
         const obItemMap = {}; // outbound_id → { name → qty }
@@ -122,20 +154,34 @@
         const priceItems = priceRows || [];
         const itemNames = priceItems.map(p => p.name);
 
-        // 6. N번째 출고 ↔ N번째 명세서 매칭 (순서 기반)
-        const maxLen = Math.max(outbounds.length, invoices.length);
-        const pairs = [];
-        for (let i = 0; i < maxLen; i++) {
-            pairs.push({ ob: outbounds[i] || null, inv: invoices[i] || null });
-        }
+        // 6. 짝짓기 — hotel_outbounds.invoice_id 기준 (월 내 순번 매칭 폐기)
+        //    순번 매칭은 휴무 주에 출고 2건 : 명세서 1건이 되면서 그 주부터 한 칸씩 밀렸다.
+        //    이제 한 명세서에 출고 N건이 묶이는 것이 그대로 표현된다. 날짜 비교는 하지 않는다.
+        const obsByInv = {};
+        boundObs.forEach(o => {
+            if (!obsByInv[o.invoice_id]) obsByInv[o.invoice_id] = [];
+            obsByInv[o.invoice_id].push(o);
+        });
+        Object.keys(obsByInv).forEach(k => obsByInv[k].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)));
 
-        // 7. 월 누계 집계 (대조 완료 건만: ob + inv 둘 다 있는 건)
+        const pairs = [];
+        // 명세서 1건 = 행 1개. 묶인 출고가 없으면 "출고 미입력".
+        invoices.forEach(inv => pairs.push({ obs: obsByInv[inv.id] || [], inv, sortKey: inv.date }));
+        // 아직 명세서가 붙지 않은 출고 = "세탁 대기" 행
+        pendingObs.forEach(ob => pairs.push({ obs: [ob], inv: null, sortKey: ob.date }));
+        pairs.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+
+        // 7. 월 누계 집계
+        //    대조 완료 = "출고가 묶인 명세서". 그 명세서의 품목과 묶인 출고 전부를 더한다.
+        //    세탁 대기(명세서 없음)와 출고 미입력(묶인 출고 없음)은 양쪽 모두 제외한다 —
+        //    한쪽만 더하면 월 누계가 기울어 판정이 무의미해진다.
+        //    (기존 "ob·inv 둘 다 있는 쌍만" 규칙과 같은 취지. 단위가 쌍 → 명세서로 바뀐 것)
         const monthlySummary = {}; // name → { ob: N, inv: N }
         itemNames.forEach(n => { monthlySummary[n] = { ob: 0, inv: 0 }; });
         let pendingObCount = 0;
-        pairs.forEach(({ ob, inv }) => {
-            if (ob && inv) {
-                Object.entries(obItemMap[ob.id] || {}).forEach(([n, q]) => {
+        pairs.forEach(({ obs, inv }) => {
+            if (inv && obs.length > 0) {
+                Object.entries(_sumObItems(obs, obItemMap)).forEach(([n, q]) => {
                     if (!monthlySummary[n]) monthlySummary[n] = { ob: 0, inv: 0 };
                     monthlySummary[n].ob += q;
                 });
@@ -143,11 +189,11 @@
                     if (!monthlySummary[n]) monthlySummary[n] = { ob: 0, inv: 0 };
                     monthlySummary[n].inv += q;
                 });
-            } else if (ob && !inv) {
+            } else if (!inv) {
                 pendingObCount++;
             }
         });
-        const completedCount = pairs.filter(({ ob, inv }) => ob && inv).length;
+        const completedCount = pairs.filter(({ obs, inv }) => inv && obs.length > 0).length;
 
         section.innerHTML = _buildHTML(month, today, pairs, monthlySummary, invItemMap, obItemMap, priceItems, pendingObCount, completedCount);
     }
@@ -184,15 +230,17 @@
         const fmtD = d => { const [y,m,day] = d.split('-').map(Number); return `${y}.${String(m).padStart(2,'0')}.${String(day).padStart(2,'0')} (${_dow[new Date(y,m-1,day).getDay()]})`; };
         const dash = '<span style="color:#9ca3af;">—</span>';
 
-        pairs.forEach(({ ob, inv }, idx) => {
+        const fmtMD = d => { const p = String(d).split('-'); return p.length < 3 ? d : Number(p[1]) + '/' + Number(p[2]); };
+
+        pairs.forEach(({ obs, inv }, idx) => {
             const rowId = 'obdetail_' + idx;
-            const obDate = ob ? ob.date : null;
+            const hasOb = obs.length > 0;
             const invDate = inv ? inv.date : null;
 
-            // 판정 (양쪽 모두 있을 때만)
+            // 판정 (명세서 + 묶인 출고가 모두 있을 때만)
             let verdictHtml = dash;
-            if (ob && inv) {
-                const obItems = obItemMap[ob.id] || {};
+            if (hasOb && inv) {
+                const obItems = _sumObItems(obs, obItemMap);
                 const invItems = invItemMap[inv.id] || {};
                 const allN = [...new Set([...Object.keys(obItems), ...Object.keys(invItems)])];
                 const hasIssue = allN.some(n => !_diffCalc(obItems[n] || 0, invItems[n] || 0).isOk);
@@ -201,33 +249,43 @@
                     : '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">정상</span>';
             }
 
-            // 세탁 대기 행(ob만 있음): 행 전체 muted
-            const isPending = ob && !inv;
+            // 세탁 대기 행(출고만 있고 명세서 없음): 행 전체 muted
+            const isPending = hasOb && !inv;
 
             // 확인 칸 (확인 상태 + 관리 통합)
             let confirmCellHtml;
-            if (!ob && (!invDate || invDate === today)) {
+            if (!hasOb && (!invDate || invDate === today)) {
                 const inputDate = invDate || today;
                 confirmCellHtml = `<button onclick="event.stopPropagation();window.openOutboundInputModal('${inputDate}')" style="background:#ede9fe;color:#5b21b6;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">${ico('plus')} 출고 입력</button>`;
             } else {
                 confirmCellHtml = _confirmCell(inv, today);
             }
 
-            const detailHtml = _buildDetailTable(ob, inv, obItemMap, invItemMap, priceItems);
+            const detailHtml = _buildDetailTable(obs, inv, obItemMap, invItemMap, priceItems);
 
-            // 일자 셀: 출고일 기준 M/D (요일), 부가 상태 같은 줄
+            // 일자 셀
+            //  - 명세서 있음: 명세서 일자가 기준. 묶인 출고일은 작은 글씨로 함께 (여러 날일 수 있다)
+            //  - 명세서 없음: 출고일 + "세탁 대기"
             let dateCellHtml;
-            if (obDate) {
-                dateCellHtml = `<span style="font-size:12px;">${fmtD(obDate)}</span>`
-                    + (!inv ? `<span style="font-size:11px;color:#9ca3af;"> · 세탁 대기</span>` : '');
-            } else if (invDate) {
-                dateCellHtml = `<span style="font-size:11px;color:#ef4444;">출고 미입력</span><span style="font-size:12px;color:#6b7280;"> · ${fmtD(invDate)}</span>`;
+            if (inv) {
+                dateCellHtml = `<span style="font-size:12px;">${fmtD(invDate)}</span>`;
+                if (hasOb) {
+                    dateCellHtml += `<br><span style="font-size:11px;color:#6b7280;">출고 ${obs.map(o => fmtMD(o.date)).join(' · ')}</span>`;
+                } else {
+                    dateCellHtml += `<br><span style="font-size:11px;color:#ef4444;">출고 미입력</span>`;
+                }
+            } else if (hasOb) {
+                dateCellHtml = `<span style="font-size:12px;">${fmtD(obs[0].date)}</span>`
+                    + `<span style="font-size:11px;color:#9ca3af;"> · 세탁 대기</span>`;
             } else {
                 dateCellHtml = dash;
             }
 
-            // 출고/명세서 ✓ 여부 칸
-            const obCheckHtml = ob ? `<svg class="icon" aria-hidden="true" style="color:#059669;"><use href="#i-check"/></svg>` : dash;
+            // 출고/명세서 ✓ 여부 칸 (출고가 여러 건이면 건수 표기)
+            const obCheckHtml = hasOb
+                ? `<svg class="icon" aria-hidden="true" style="color:#059669;"><use href="#i-check"/></svg>`
+                  + (obs.length > 1 ? `<span style="font-size:10px;color:#6b7280;"> ${obs.length}건</span>` : '')
+                : dash;
             const invCheckHtml = inv ? `<svg class="icon" aria-hidden="true" style="color:#3b82f6;"><use href="#i-check"/></svg>` : dash;
 
             dailyRows += `
@@ -244,8 +302,14 @@
         });
 
         // 오늘 출고 입력/수정 버튼 (당월만, KST 오전 5시~자정 활성)
-        const todayObEntry = pairs.find(({ ob }) => ob && ob.date === today);
-        const todayHasOb = !!todayObEntry;
+        const todayOb = (function () {
+            for (const p of pairs) {
+                const hit = (p.obs || []).find(o => o.date === today);
+                if (hit) return hit;
+            }
+            return null;
+        })();
+        const todayHasOb = !!todayOb;
         const isCurrentMonth = today.startsWith(month);
         // KST 시각 판정: 0~4시 비활성, 5~23시 활성
         const _kstHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
@@ -261,7 +325,7 @@
                 <span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 현재는 입력 가능 시간이 아닙니다 (오전 5시부터 가능)</span>
             </div>`;
             } else if (todayHasOb) {
-                const obId = todayObEntry.ob.id;
+                const obId = todayOb.id;
                 todayBtnHtml = `<div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
                 <button onclick="window.openOutboundInputModal('${today}', '${obId}')" style="background:#059669;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;">
                     ${ico('pencil')} 오늘 출고 수정 (${today})
@@ -338,8 +402,11 @@
     }
 
     // ── 일자별 품목 펼침 테이블 ────────────────────────────
-    function _buildDetailTable(ob, inv, obItemMap, invItemMap, priceItems) {
-        const obItems = ob ? (obItemMap[ob.id] || {}) : {};
+    // obs: 이 명세서에 묶인 출고 목록(배열). 단일 객체·null 도 받아 준다.
+    function _buildDetailTable(obs, inv, obItemMap, invItemMap, priceItems) {
+        const obList = !obs ? [] : (Array.isArray(obs) ? obs : [obs]);
+        const hasOb = obList.length > 0;
+        const obItems = hasOb ? _sumObItems(obList, obItemMap) : {};
         const invItems = inv ? (invItemMap[inv.id] || {}) : {};
         const itemNames = priceItems.map(p => p.name);
         const allNames = [...new Set([...itemNames, ...Object.keys(obItems), ...Object.keys(invItems)])];
@@ -349,7 +416,7 @@
 
         const detailDash = '<span style="color:#9ca3af;">—</span>';
         const buildRows = (names) => names.map(name => {
-            if (!ob) {
+            if (!hasOb) {
                 // 출고 미입력: 출고 칸 —, 명세서 숫자, 차이/판정 —
                 const iq = invItems[name] || 0;
                 return `<tr>
