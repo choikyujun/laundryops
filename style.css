@@ -186,3 +186,64 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
 .date-group-1 { transition: background-color 0.12s ease; cursor: pointer; }
 .date-group-0:hover,
 .date-group-1:hover { background: #e6f1fb; }
+
+/* ============================================================
+   명세서 작성 표 전용 — 가로 스크롤 + 품목 열 고정
+   inv-scroll 클래스는 features/outbound-qty.js가 부여한다.
+
+   왜 필요한가: style.css:31 / :103 두 모바일 블록이 .admin-table 을
+   display:block + tr{width:100%; table-layout:fixed} 으로 묶어놔서
+   표가 화면 폭을 넘지 못한다. overflow-x:auto 가 있어도 넘칠 것이
+   없어 스크롤이 발생하지 않고 열만 균등 압축된다.
+
+   .admin-table.inv-scroll 조합(특이도 0,2,0 / 자손 0,3,0)으로
+   그 표 하나만 되돌린다. 다른 .admin-table 표는 건드리지 않는다.
+   ============================================================ */
+
+/* display 계열 복구 — 모바일 블록의 display:block / display:table 무력화 */
+.admin-table.inv-scroll       { display: table !important; }
+.admin-table.inv-scroll thead { display: table-header-group !important; }
+.admin-table.inv-scroll tbody { display: table-row-group !important; }
+.admin-table.inv-scroll tr    { display: table-row !important; }
+
+/* 폭 고정 해제 — 내용만큼 넓어지고, 좁을 때만 컨테이너를 채운다.
+   스크롤은 조상 .table-scroll-wrap 이 담당하므로 표 자신은 overflow 해제 */
+.admin-table.inv-scroll {
+    table-layout: auto !important;
+    width: auto !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+}
+.admin-table.inv-scroll tr {
+    width: auto !important;
+    table-layout: auto !important;
+}
+
+/* 셀이 세로로 쪼개지면 표가 넓어지지 않아 스크롤이 생기지 않는다 */
+.admin-table.inv-scroll th,
+.admin-table.inv-scroll td {
+    white-space: nowrap !important;
+    word-break: normal !important;
+}
+
+/* 품목 열 고정 — 배경색 필수(없으면 스크롤 시 뒤 내용이 비쳐 겹친다) */
+.admin-table.inv-scroll th:first-child,
+.admin-table.inv-scroll td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+    text-align: left;
+}
+.admin-table.inv-scroll thead th:first-child {
+    background: #f8fafc;
+    z-index: 3;
+}
+
+/* 특수거래처 카테고리 헤더 행 / 안내 행(colspan)은 고정 제외 —
+   전체 폭을 차지하므로 sticky 를 걸면 스크롤 시 잘못 따라붙는다 */
+.admin-table.inv-scroll tr.cat-header td {
+    position: static !important;
+    background: #f1f5f9 !important;
+    white-space: normal !important;
+}
