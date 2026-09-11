@@ -7,6 +7,7 @@
 // [태스크 3] 출고수량 열 구조 추가
 // [태스크 4] 미대조 출고 조회 + 품목별 합계 표시 + 출고 날짜 줄 + 단가 미등록 품목 줄
 // [태스크 5] 입력 수량과 출고수량의 차이 표시 (색만, 저장 차단 없음)
+// [태스크 6] 명세서 저장 성공 후 출고 소진 (hotel_outbounds.invoice_id 채움)
 //
 // app_v38.js 직접 수정 금지 원칙에 따라 window.* 오버라이드로만 구현.
 // makeRow 는 openInvoiceModal 내부 지역 const(app_v38.js:3184)라 캡처가
@@ -30,6 +31,9 @@
 
     // 비동기 렌더가 겹칠 때 오래된 결과가 최신 화면을 덮어쓰지 않도록
     var _token = 0;
+
+    // [태스크 6] 저장 성공 신호 — loadStaffInvoiceList 호출 여부 (app_v38.js:1129)
+    var _saveSignalled = false;
 
     // ── 표 찾기 ──────────────────────────────────────────
     // index.html:840 의 정적 마크업. tbody 내용만 교체되고 table 자체는 유지된다.
@@ -370,6 +374,67 @@
         });
     }
 
+    // ── [태스크 6] 출고 소진 ──────────────────────────────
+    // app_v38.js 의 currentFactoryId 는 최상위 let 이라 window 에 없다.
+    // 같은 전역 렉시컬 스코프라 맨이름으로 읽힌다(outbound-compare.js 의 currentHotelId 와 동일 패턴).
+    function _factoryId() {
+        try { if (typeof currentFactoryId !== 'undefined' && currentFactoryId) return currentFactoryId; }
+        catch (e) { /* TDZ 방어 */ }
+        try { return localStorage.getItem('currentFactoryId') || null; } catch (e) { return null; }
+    }
+
+    // 저장 성공 직후 호출. 실패해도 절대 throw 하지 않는다 —
+    // 미소진 출고는 미대조로 남아 다음 명세서에 합산되고, 숫자가 커져 직원이 알아챈다.
+    // 조용한 오염보다 낫다.
+    async function _claimOutbound(hotelId, dateStr) {
+        var hData = await _loadHotel(hotelId);
+        if (!_isEnabled(hData)) return { skipped: 'disabled' };
+
+        // 1) 명세서 id 재조회 — (factory_id, hotel_id, date) 는 유일 키.
+        //    saveAndPrintInvoice 가 invoiceId 를 지역 let 으로만 갖고 반환하지 않아 직접 받을 수 없다.
+        var invQ = window.mySupabase.from('invoices').select('id')
+            .eq('hotel_id', hotelId).eq('date', dateStr);
+        var fId = _factoryId();
+        if (fId) invQ = invQ.eq('factory_id', fId);
+
+        var invRes = await invQ.maybeSingle();
+        if (invRes.error) {
+            console.error('[outbound-qty] 소진 건너뜀 — 명세서 조회 실패:', invRes.error);
+            return { skipped: 'invoice-error' };
+        }
+        if (!invRes.data) {
+            console.warn('[outbound-qty] 소진 건너뜀 — 저장된 명세서를 찾지 못함', hotelId, dateStr);
+            return { skipped: 'no-invoice' };
+        }
+        var invoiceId = invRes.data.id;
+
+        // 2) 신규/수정 구분은 DOM(editModeBadge)이 아니라 데이터로 한다.
+        //    이 명세서에 이미 묶인 출고가 있으면 수정이므로 추가 소진 없음.
+        //    (묶인 게 없으면 과거 소진 실패분을 여기서 복구하게 된다 — 의도된 동작)
+        var boundRes = await window.mySupabase.from('hotel_outbounds')
+            .select('id').eq('invoice_id', invoiceId).limit(1);
+        if (boundRes.error) {
+            console.error('[outbound-qty] 소진 건너뜀 — 기존 소진 확인 실패:', boundRes.error);
+            return { skipped: 'bound-error' };
+        }
+        if ((boundRes.data || []).length > 0) return { skipped: 'already-claimed', invoiceId: invoiceId };
+
+        // 3) 소진 — 태스크 4 의 조회 조건과 같은 범위여야 화면에 보여준 것과 일치한다.
+        var upd = window.mySupabase.from('hotel_outbounds')
+            .update({ invoice_id: invoiceId })
+            .eq('hotel_id', hotelId)
+            .is('invoice_id', null);
+        // 기능 ON 이전 출고 제외. start_date 가 null 이면 조건 자체를 걸지 않는다.
+        if (hData.outbound_start_date) upd = upd.gte('date', hData.outbound_start_date);
+
+        var updRes = await upd;
+        if (updRes.error) {
+            console.error('[outbound-qty] 출고 소진 실패(무시) — 다음 명세서에 합산됩니다:', updRes.error);
+            return { skipped: 'update-error' };
+        }
+        return { claimed: true, invoiceId: invoiceId };
+    }
+
     // ── 렌더 후 적용 ──────────────────────────────────────
     async function _applyAll() {
         var table = _getInvTable();
@@ -455,6 +520,50 @@
             window.calcTotal._obQtyPatched = true;
         }
 
+        // 3) loadStaffInvoiceList — 저장 성공 신호.
+        //    app_v38.js:1129 가 성공 경로에서만 호출한다(실패 경로는 전부 early return).
+        //    DOM 상태가 아니라 "성공 경로의 함수가 실제로 불렸는가" 를 본다.
+        //    staff-dispatch.js 가 이미 감싸고 있으므로 그 위에 다시 감싸 체인을 보존한다.
+        if (typeof window.loadStaffInvoiceList === 'function' && !window.loadStaffInvoiceList._obQtySignal) {
+            var _origList = window.loadStaffInvoiceList;
+            window.loadStaffInvoiceList = function () {
+                _saveSignalled = true;
+                return _origList.apply(this, arguments);
+            };
+            window.loadStaffInvoiceList._obQtySignal = true;
+        }
+
+        // 4) saveAndPrintInvoice — 저장 성공 후 소진
+        if (typeof window.saveAndPrintInvoice === 'function' && !window.saveAndPrintInvoice._obQtyPatched) {
+            var _origSave = window.saveAndPrintInvoice;
+            window.saveAndPrintInvoice = async function () {
+                // 저장 함수가 끝나면서 폼을 초기화하므로(app_v38.js:1124-1126) 호출 전에 캡처
+                var sel = document.getElementById('staffHotelSelect');
+                var dateEl = document.getElementById('invoiceDate');
+                var formEl = document.getElementById('invoiceFormArea');
+                var hotelId = sel ? sel.value : '';
+                var dateStr = dateEl ? dateEl.value : '';
+                var wasVisible = !!formEl && formEl.style.display !== 'none';
+
+                _saveSignalled = false;
+                var result = await _origSave.apply(this, arguments);
+
+                // 소진은 저장 성공 뒤에만. 순서를 뒤집으면 저장 실패 시 출고가 잘못 소진된다.
+                try {
+                    var nowHidden = !!formEl && formEl.style.display === 'none';
+                    // 두 신호를 모두 요구한다 — 하나라도 없으면 소진하지 않는다(안전측).
+                    if (_saveSignalled && wasVisible && nowHidden && hotelId && dateStr) {
+                        await _claimOutbound(hotelId, dateStr);
+                    }
+                } catch (e) {
+                    // 소진 실패는 에러가 아니다. alert·throw 금지.
+                    console.error('[outbound-qty] 출고 소진 중 오류(무시):', e);
+                }
+                return result;
+            };
+            window.saveAndPrintInvoice._obQtyPatched = true;
+        }
+
         // 정적 마크업 표에 미리 부여 (첫 렌더 전에도 규칙이 적용되도록)
         _applyScrollClasses(_getInvTable());
     }
@@ -474,6 +583,7 @@
         getOutbound: function () { return _lastOutbound; },
         loadOutbound: _loadOutbound,
         applyDiffHighlight: _applyDiffHighlight,
+        claimOutbound: _claimOutbound,
         applyAll: _applyAll
     };
 

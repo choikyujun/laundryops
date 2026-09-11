@@ -4,7 +4,7 @@
 > 대상 제품: LaundryOps v38
 
 ## 현재 단계
-**개발 진행 중.** 태스크 0~5 완료. 다음: 태스크 6(소진 처리).
+**개발 진행 중.** 태스크 0~6 완료. 다음: 태스크 7(대조 짝짓기 기준 교체).
 
 ## 단계 게이트
 | 단계 | 상태 | 메모 |
@@ -12,7 +12,7 @@
 | 기획 (planner) | 승인 | 2026-09-11. `01-prd-출고수량.md` |
 | 설계 (architect) | 승인 | 2026-09-11. `02-architecture-출고수량.md` |
 | 디자인 (designer) | 생략 | 기존 v38 UI 패턴 재활용(대조 화면 색 규칙·표 구조). 열 1개 추가라 별도 스펙 불필요 |
-| 개발 (dev) | 진행 중 | 태스크 0~5 완료. features/outbound-qty.js + outbound-compare.js(판정·판정식 노출). app_v38.js 무변경 확인 |
+| 개발 (dev) | 진행 중 | 태스크 0~6 완료. features/outbound-qty.js + outbound-compare.js(판정·판정식 노출). app_v38.js 무변경 확인 |
 | 검증 (qa) | 대기 중 | 태스크 1 배포 후 안드로이드 실기기 확인 — 사장님 확인 대기 |
 | 배포준비 | 대기 | dist/ 불필요(루트 서빙) |
 | 마케팅 | 해당 없음 | 내부 기능 |
@@ -58,6 +58,9 @@
 | 2026-09-11 | 출고 날짜를 표 위 별도 줄 → **거래처 이름 오른쪽 span** | 사장님 확정. 세로 공간 절약, 어느 거래처의 출고인지 바로 붙어 보임 | 사장님 |
 | 2026-09-11 | 수량 입력칸 폭 60px → 80px → **52px** (`#staffInvoiceBody .qty-input` `!important`) | 80px 은 과했음. 수량은 세 자리(100 단위)가 최대. 실측(Chrome 360px): 폰트 16px Arial, `"999"`=27px, `"-999"`=33px, padding+border=8px → 52px(내용 44px)이면 음수 세 자리까지 여유. `app_v38.js:3197` 인라인 style 을 CSS `!important` 로 덮음(직접 수정 금지) | 사장님 |
 | 2026-09-11 | 날짜 span 은 매 렌더마다 재부착 | `app_v38.js:3161` 이 `innerText` 로 이름을 덮어써 자식 span 이 날아간다. `_applyAll` 이 렌더 이후에 돌아 자동 복구됨 | 개발 |
+| 2026-09-11 | 저장 성공 판정 = **`loadStaffInvoiceList` 호출 여부 + 폼 숨김**, 둘 다 요구 | DOM 추론 하나보다 확실. `app_v38.js:1129` 는 성공 경로에서만 호출되고 실패 경로는 전부 early return. 두 신호 중 하나라도 없으면 소진하지 않는다(안전측 — 미소진은 허용, 잘못된 소진은 불가) | 개발 |
+| 2026-09-11 | 신규/수정 구분 = `invoice_id` 로 묶인 출고 존재 여부(데이터) | 사장님 지시. `editModeBadge` 같은 DOM 상태는 취약. 부수 효과로 과거 소진 실패분이 다음 저장 때 복구됨(의도) | 사장님 |
+| 2026-09-11 | `currentFactoryId` 는 맨이름으로 읽고 `localStorage` 폴백 | `app_v38.js:140` 이 최상위 `let` 이라 `window` 에 없다. 같은 전역 렉시컬 스코프라 접근 가능(`outbound-compare.js` 의 `currentHotelId` 와 동일 패턴). TDZ 대비 try/catch | 개발 |
 
 ## 알려진 결함 (이 작업으로 함께 해소)
 
@@ -83,6 +86,13 @@
 - [x] 명세서 삭제 경로 **4곳** (app_v38.js:661, 1114, 1388, 7504) — `on delete set null`이 전부 커버, 되돌림 로직 불필요
 - [x] `.chart-container` = `#invoiceFormArea` 자신(index.html:835). **sticky는 안 깨짐** (스크롤 컨테이너 `.table-scroll-wrap`이 그 안쪽). 진짜 장애물은 style.css:34-35의 `display` 규칙
 - [x] RLS update 권한 **있음** — `hob_rw ... for all`, `role in ('factory','staff') and factory_id = jwt_factory()` (laundryops_auth_rls.sql:131). Supabase Auth 실사용 확인(app_v38.js:2972). **라이브 DB 적용 여부는 태스크 2에서 확인**
+
+## 알려진 한계 (태스크 6)
+- **저장 성공 판정은 부수 효과 관찰이다.** `saveAndPrintInvoice` 가 반환값이 없고 `invoiceId` 가 지역 `let`(app_v38.js:1067)이라 직접 받을 방법이 없다.
+  두 신호(`loadStaffInvoiceList` 호출 + `#invoiceFormArea` 숨김)를 **모두** 요구해 오탐을 막았다.
+  `app_v38.js` 의 성공 경로(1124~1129)가 바뀌면 소진이 조용히 멈춘다 — 그래도 잘못 소진되지는 않는다(미소진 출고는 다음 명세서에 합산되어 직원이 알아챔).
+- **소진 범위는 저장 시점 기준이다.** 화면에 보여준 출고 날짜와 저장 사이에 호텔이 새 출고를 입력하면 그것도 함께 소진된다.
+  출고 입력이 자정 마감이고 명세서는 당일 작성이라 창이 좁다. 어긋나면 다음 명세서의 날짜 줄에 드러난다.
 
 ## 미해결 (사장님 판단 필요)
 - [x] ~~출고에는 있는데 단가표에 없는 품목~~ → **해결.** 표 아래 `단가 미등록 품목: 방석커버 12개` 한 줄로 표시 (2026-09-11, 태스크 4/5)
@@ -113,7 +123,7 @@
 - [x] `01-prd-출고수량.md` — 기획
 - [x] `02-architecture-출고수량.md` — 설계(스키마·CSS·태스크·킥오프)
 - [ ] 디자인 — 생략(기존 UI 재활용)
-- [x] `features/outbound-qty.js` — 태스크 1(클래스) + 3(열 구조) + 4(조회·합계·날짜 줄·단가 미등록 줄) + 5(차이 표시). 태스크 6~7에서 확장
+- [x] `features/outbound-qty.js` — 태스크 1(클래스) + 3(열 구조) + 4(조회·합계·날짜·미등록) + 5(차이 표시) + 6(소진). 태스크 7에서 대조 쪽 확장
 - [x] `features/outbound-compare.js` — `_isOutboundEnabled` 추출 + `diffCalc` 래퍼, `window._obCompareUtils` 노출 (태스크 7에서 짝짓기 기준 교체 예정)
 - [x] `style.css` — `.admin-table.inv-scroll` 블록 추가 (style.css:190~)
 - [x] `index.html` — 스크립트 태그 추가, `style.css?v=20260911_1` 캐시 갱신
