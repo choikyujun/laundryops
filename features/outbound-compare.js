@@ -57,15 +57,18 @@
         return sum;
     }
 
-    // ── 렌더링 ─────────────────────────────────────────────
-    async function _render() {
-        if (!_hId) return; // loadOutboundSection을 거치지 않은 직접 호출 방어
-        const section = document.getElementById('outboundCompareSection');
-        if (!section) return;
-        section.innerHTML = '<div style="padding:24px;text-align:center;color:#6b7280;">대조 데이터 로딩 중...</div>';
-
+    // 섹션이 보고 있는 월 (YYYY-MM). #hotelInvoiceMonth 를 매번 새로 읽는다.
+    // 모듈에 월 상태를 두지 않는다 — 팝업 전용 월과 섞이지 않게 하기 위함.
+    function _sectionMonth() {
         const monthInput = document.getElementById('hotelInvoiceMonth');
-        const month = (monthInput && monthInput.value) ? monthInput.value : new Date().toISOString().slice(0, 7);
+        return (monthInput && monthInput.value) ? monthInput.value : new Date().toISOString().slice(0, 10).slice(0, 7);
+    }
+
+    // ── 월 데이터 조회 + 짝짓기 + 누계 ─────────────────────
+    // 월(YYYY-MM)을 인자로 받는다. 섹션과 팝업이 서로 다른 월로 호출해도 안전하도록
+    // 이 함수는 모듈의 월 상태를 일절 읽지 않는다.
+    async function _loadMonthData(ym) {
+        const month = ym;
         const [y, m] = month.split('-').map(Number);
         const monthStart = month + '-01';
         const lastDay = new Date(y, m, 0).getDate();
@@ -195,14 +198,35 @@
         });
         const completedCount = pairs.filter(({ obs, inv }) => inv && obs.length > 0).length;
 
-        section.innerHTML = _buildHTML(month, today, pairs, monthlySummary, invItemMap, obItemMap, priceItems, pendingObCount, completedCount);
+        return { month, pairs, monthlySummary, invItemMap, obItemMap, priceItems, pendingObCount, completedCount };
     }
 
-    // ── HTML 조립 ───────────────────────────────────────────
-    function _buildHTML(month, today, pairs, monthlySummary, invItemMap, obItemMap, priceItems, pendingObCount, completedCount) {
+    // ── 렌더링 ─────────────────────────────────────────────
+    // 섹션에는 일자별 내역만 남긴다. 월 누계는 팝업(태스크 3)으로 이동.
+    async function _render() {
+        if (!_hId) return; // loadOutboundSection을 거치지 않은 직접 호출 방어
+        const section = document.getElementById('outboundCompareSection');
+        if (!section) return;
+        section.innerHTML = '<div style="padding:24px;text-align:center;color:#6b7280;">대조 데이터 로딩 중...</div>';
+
+        const today = _todayKST();
+        const data = await _loadMonthData(_sectionMonth());
+        section.innerHTML = _buildHTML(data, today);
+    }
+
+    // ── 월 누계 대조표 HTML ─────────────────────────────────
+    // 임의의 월을 그릴 수 있다. 팝업(태스크 3)이 이 함수를 월만 바꿔 호출한다.
+    // 누계 계산은 _loadMonthData 하나뿐이라 섹션·팝업이 두 벌이 될 일이 없다.
+    async function _buildSummaryHTML(ym) {
+        const data = await _loadMonthData(ym);
+        return _summaryHTML(data);
+    }
+
+    // data → 월 누계 표 HTML (동기). _loadMonthData 결과를 그대로 받는다.
+    function _summaryHTML(data) {
+        const { monthlySummary, priceItems, pendingObCount, completedCount } = data;
         const itemNames = priceItems.map(p => p.name);
 
-        // ── 월 누계 대조 테이블 ─────────────
         // 특수거래처: 카테고리별 그룹핑
         let monthlyRows = '';
         if (_isSpecial) {
@@ -224,7 +248,32 @@
         extraNames.forEach(name => { monthlyRows += _monthlyRow(name, monthlySummary); });
         if (!monthlyRows) monthlyRows = `<tr><td colspan="5" style="text-align:center;color:gray;padding:16px;">이번 달 데이터 없음</td></tr>`;
 
-        // ── 일자별 내역 ──────────────────────
+        return `
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary,#3b82f6);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${ico('bar-chart-2')} ${data.month.slice(5)}월 누계 대조
+            ${pendingObCount > 0 ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:500;">세탁 대기 ${pendingObCount}건 (명세서 발행 전, 대조 제외)</span>` : ''}
+        </div>
+        ${completedCount === 0
+            ? `<div style="background:#f1f5f9;border-radius:8px;padding:16px 20px;font-size:12px;color:#6b7280;text-align:center;">아직 대조할 명세서가 없습니다. 세탁이 완료되면 표시됩니다.</div>`
+            : `<div class="table-scroll-wrap">
+            <table class="admin-table" style="min-width:360px;">
+                <thead><tr>
+                    <th>품목</th>
+                    <th style="text-align:right;white-space:nowrap;">거래처 출고</th>
+                    <th style="text-align:right;white-space:nowrap;">공장 명세서</th>
+                    <th style="text-align:right;">차이</th>
+                    <th style="text-align:center;">판정</th>
+                </tr></thead>
+                <tbody>${monthlyRows}</tbody>
+            </table>
+        </div>`}`;
+    }
+
+    // ── 일자별 내역 HTML ────────────────────────────────────
+    // data: _loadMonthData 결과. 섹션이 쓰는 본문.
+    function _buildDailyHTML(data, today) {
+        const { pairs, invItemMap, obItemMap, priceItems } = data;
+
         let dailyRows = '';
         const _dow = ['일','월','화','수','목','금','토'];
         const fmtD = d => { const [y,m,day] = d.split('-').map(Number); return `${y}.${String(m).padStart(2,'0')}.${String(day).padStart(2,'0')} (${_dow[new Date(y,m-1,day).getDay()]})`; };
@@ -301,6 +350,31 @@
             </tr>`;
         });
 
+        return `
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary,#3b82f6);">
+            ${ico('clipboard-list')} 일자별 내역 <span style="font-weight:400;font-size:11px;color:#6b7280;">(행 클릭 시 품목별 펼침)</span>
+        </div>
+        <div class="table-scroll-wrap">
+            <table class="admin-table" style="min-width:500px;">
+                <thead><tr>
+                    <th>일자</th>
+                    <th style="text-align:center;white-space:nowrap;">거래처 출고</th>
+                    <th style="text-align:center;white-space:nowrap;">공장 명세서</th>
+                    <th style="text-align:center;">판정</th>
+                    <th style="text-align:center;">확인</th>
+                </tr></thead>
+                <tbody>${dailyRows || '<tr><td colspan="5" style="text-align:center;color:gray;padding:20px;">이번 달 대조 데이터 없음</td></tr>'}</tbody>
+            </table>
+        </div>`;
+    }
+
+    // ── 버튼 행 ─────────────────────────────────────────────
+    // 버튼 행 자체는 월과 무관하게 항상 렌더한다 — 지난 달을 보고 있어도
+    // 월 합계 버튼(태스크 2)이 보여야 하기 때문. 오늘 출고 버튼만 당월 조건을 탄다.
+    // 안내 배지는 다음 줄로 내린다 — 폰 좁은 폭에서 버튼이 배지에 밀려 줄바꿈되지 않도록.
+    function _buildButtonRow(data, today) {
+        const { pairs, month } = data;
+
         // 오늘 출고 입력/수정 버튼 (당월만, KST 오전 5시~자정 활성)
         const todayOb = (function () {
             for (const p of pairs) {
@@ -314,76 +388,47 @@
         // KST 시각 판정: 0~4시 비활성, 5~23시 활성
         const _kstHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
         const isInputTime = _kstHour >= 5;
-        let todayBtnHtml = '';
+
+        let btnHtml = '', noticeHtml = '';
         if (isCurrentMonth) {
             if (!isInputTime) {
                 // 자정~오전 5시 비활성
-                todayBtnHtml = `<div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-                <button disabled style="background:#e5e7eb;color:#9ca3af;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:not-allowed;font-weight:700;opacity:0.6;">
+                btnHtml = `<button disabled style="background:#e5e7eb;color:#9ca3af;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:not-allowed;font-weight:700;opacity:0.6;white-space:nowrap;">
                     ${ico(todayHasOb ? 'pencil' : 'plus')} 오늘 출고 ${todayHasOb ? '수정' : '입력'} (${today})
-                </button>
-                <span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 현재는 입력 가능 시간이 아닙니다 (오전 5시부터 가능)</span>
-            </div>`;
+                </button>`;
+                noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 현재는 입력 가능 시간이 아닙니다 (오전 5시부터 가능)</span>`;
             } else if (todayHasOb) {
-                const obId = todayOb.id;
-                todayBtnHtml = `<div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-                <button onclick="window.openOutboundInputModal('${today}', '${obId}')" style="background:#059669;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;">
+                btnHtml = `<button onclick="window.openOutboundInputModal('${today}', '${todayOb.id}')" style="background:#059669;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
                     ${ico('pencil')} 오늘 출고 수정 (${today})
-                </button>
-                <span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>
-            </div>`;
+                </button>`;
+                noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>`;
             } else {
-                todayBtnHtml = `<div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-                <button onclick="window.openOutboundInputModal('${today}')" style="background:var(--primary,#3b82f6);color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;">
+                btnHtml = `<button onclick="window.openOutboundInputModal('${today}')" style="background:var(--primary,#3b82f6);color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700;white-space:nowrap;">
                     ${ico('plus')} 오늘 출고 입력 (${today})
-                </button>
-                <span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>
-            </div>`;
+                </button>`;
+                noticeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">${ico('clock')} 출고 입력은 오전 5시부터 자정까지 가능합니다.</span>`;
             }
         }
 
+        // 태스크 2에서 여기 오른쪽 끝에 "M월 합계" 버튼이 들어간다.
+        const rowHtml = btnHtml
+            ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:${noticeHtml ? '6px' : '12px'};">${btnHtml}</div>`
+            : '';
+        const noticeRowHtml = noticeHtml ? `<div style="margin-bottom:12px;">${noticeHtml}</div>` : '';
+        return rowHtml + noticeRowHtml;
+    }
+
+    // ── 섹션 전체 조립 ──────────────────────────────────────
+    // 순서: 헤더 → 버튼 행 → 일자별 내역. 월 누계는 팝업으로 이동했다.
+    function _buildHTML(data, today) {
         return `
         <div class="chart-container" style="margin-top:20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
                 <div style="font-weight:700;font-size:15px;">${ico('arrow-right-left', true)} 출고·명세서 대조</div>
                 <span style="font-size:11px;color:#6b7280;">허용 오차 ±${_tolerancePct}% | 기능 시작일: ${_startDate || '-'}</span>
             </div>
-            ${todayBtnHtml}
-
-            <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary,#3b82f6);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                ${ico('bar-chart-2')} ${month.slice(5)}월 누계 대조 <span style="font-weight:400;font-size:11px;color:#6b7280;">(메인 판정 기준)</span>
-                ${pendingObCount > 0 ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:500;">세탁 대기 ${pendingObCount}건 (명세서 발행 전, 대조 제외)</span>` : ''}
-            </div>
-            ${completedCount === 0
-                ? `<div style="background:#f1f5f9;border-radius:8px;padding:16px 20px;font-size:12px;color:#6b7280;margin-bottom:20px;text-align:center;">아직 대조할 명세서가 없습니다. 세탁이 완료되면 표시됩니다.</div>`
-                : `<div class="table-scroll-wrap" style="margin-bottom:20px;">
-                <table class="admin-table" style="min-width:360px;">
-                    <thead><tr>
-                        <th>품목</th>
-                        <th style="text-align:right;white-space:nowrap;">거래처 출고</th>
-                        <th style="text-align:right;white-space:nowrap;">공장 명세서</th>
-                        <th style="text-align:right;">차이</th>
-                        <th style="text-align:center;">판정</th>
-                    </tr></thead>
-                    <tbody>${monthlyRows}</tbody>
-                </table>
-            </div>`}
-
-            <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary,#3b82f6);">
-                ${ico('clipboard-list')} 일자별 내역 <span style="font-weight:400;font-size:11px;color:#6b7280;">(행 클릭 시 품목별 펼침)</span>
-            </div>
-            <div class="table-scroll-wrap">
-                <table class="admin-table" style="min-width:500px;">
-                    <thead><tr>
-                        <th>일자</th>
-                        <th style="text-align:center;white-space:nowrap;">거래처 출고</th>
-                        <th style="text-align:center;white-space:nowrap;">공장 명세서</th>
-                        <th style="text-align:center;">판정</th>
-                        <th style="text-align:center;">확인</th>
-                    </tr></thead>
-                    <tbody>${dailyRows || '<tr><td colspan="5" style="text-align:center;color:gray;padding:20px;">이번 달 대조 데이터 없음</td></tr>'}</tbody>
-                </table>
-            </div>
+            ${_buildButtonRow(data, today)}
+            ${_buildDailyHTML(data, today)}
         </div>`;
     }
 
@@ -794,6 +839,15 @@
             _isSpecial = savedSpec;
             return html;
         }
+    };
+
+    // 내부 함수 노출 (테스트·후속 태스크용). outbound-qty.js 의 _obQtyInternals 와 동일한 방식.
+    window._obCompareInternals = {
+        loadMonthData: _loadMonthData,
+        buildSummaryHTML: _buildSummaryHTML,
+        buildDailyHTML: _buildDailyHTML,
+        buildButtonRow: _buildButtonRow,
+        sectionMonth: _sectionMonth
     };
 
     // ── 출고 입력 모달 DOM 초기화 (body에 한 번만 추가) ───
