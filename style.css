@@ -249,10 +249,14 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
 }
 
 /* 명세서 작성 표 — 수량 입력칸 폭
-   app_v38.js:3197 이 인라인 style="width:60px" 를 박아 3자리(100 단위)가 잘린다.
-   app_v38.js 직접 수정 금지이므로 !important 로 인라인을 덮는다.
+   수량은 세 자리(100 단위)를 넘지 않는다.
+   실측(Chrome, 모바일 360px): input 폰트 16px Arial, "999"=27px, "-999"=33px,
+   padding+border=8px → 3자리에 필요한 폭 35px / 음수 3자리 41px.
+   52px = 내용 44px 로 음수 세 자리까지 여유. 더 넓히면 표만 밀린다.
+   app_v38.js:3197 의 인라인 style="width:60px" 를 !important 로 덮는다
+   (app_v38.js 직접 수정 금지).
    box-sizing:border-box 는 .admin-table input(style.css:22)에서 이미 적용됨. */
 #staffInvoiceBody .qty-input {
-    width: 80px !important;
-    min-width: 80px !important;
+    width: 52px !important;
+    min-width: 52px !important;
 }
