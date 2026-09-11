@@ -258,7 +258,7 @@
 
         return `
         <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary,#3b82f6);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            ${ico('bar-chart-2')} ${data.month.slice(5)}월 누계 대조
+            <span class="ob-sum-label">${ico('bar-chart-2')} ${Number(data.month.slice(5, 7))}월 누계 대조</span>
             ${pendingObCount > 0 ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:500;">세탁 대기 ${pendingObCount}건 (명세서 발행 전, 대조 제외)</span>` : ''}
         </div>
         ${completedCount === 0
@@ -930,9 +930,83 @@
         bodyEl.innerHTML = html;
     }
 
-    // [태스크 4] 인쇄. 지금은 자리만.
+    // ── 월 누계 인쇄 ────────────────────────────────────────
+    // 전용 경로다. window.printReport 는 건드리지 않는다 —
+    // 그쪽 인쇄 CSS 는 th:nth-child(2)(3)(4) 로 열 위치에 묶여 있고 기존 호출처가 4곳이다.
+    // 창 열기·@page·500ms 후 print/close 라는 print-fix.js 의 검증된 뼈대만 따른다.
     window.printObSummary = function () {
-        console.info('[outbound-compare] 월 누계 인쇄는 태스크 4에서 구현됩니다.');
+        const ym = _popupMonth;                       // 인쇄 시점의 팝업 월
+        const bodyEl = document.getElementById('obSummaryBody');
+        if (!ym || !bodyEl) return;
+
+        // window.open 은 클릭 핸들러에서 동기로 불러야 팝업 차단에 걸리지 않는다.
+        // 그래서 재조회하지 않고 화면에 그려진 것을 그대로 복제한다.
+        const clone = bodyEl.cloneNode(true);
+        clone.querySelectorAll('button, .no-print').forEach(n => n.remove());
+        // 스프라이트 아이콘(<use href="#i-...">)은 인쇄 창에 원본이 없어 빈 칸으로 남는다
+        clone.querySelectorAll('svg').forEach(n => n.remove());
+
+        const [y, m] = ym.split('-').map(Number);
+        const printedAt = _todayKST();
+
+        const win = window.open('', '_blank', 'width=800,height=600');
+        if (!win) { alert('팝업 차단을 해제해주세요.'); return; }
+
+        win.document.write(`
+        <html>
+        <head>
+            <title>${_hName || '거래처'} ${y}년 ${m}월 출고 누계</title>
+            <style>
+                @page { size: A4 portrait; margin: 8mm; }
+
+                /* 판정 배지 배경색이 인쇄에 나와야 정상/확인 필요가 구분된다.
+                   이게 빠지면 브라우저가 배경을 생략해 이 인쇄물의 의미가 사라진다.
+                   구형 대응으로 -webkit- 접두사도 함께 둔다. */
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+
+                body { font-family: 'Malgun Gothic', sans-serif; padding: 0; margin: 0; color: #0f172a; }
+
+                .ob-print-head { border-bottom: 2px solid #334155; padding-bottom: 6px; margin-bottom: 10px; }
+                .ob-print-title { font-size: 16px; font-weight: 700; }
+                .ob-print-meta { font-size: 11px; color: #475569; margin-top: 4px; }
+
+                /* 팝업 안의 "N월 누계 대조" 제목은 머리말과 겹치므로 숨긴다.
+                   같은 줄의 "세탁 대기 N건" 배지는 남는다. */
+                .ob-sum-label { display: none; }
+
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th, td { border: 1px solid #cbd5e1; padding: 5px 8px; font-size: 12px; }
+                th { background: #f1f5f9; font-weight: 700; }
+
+                /* 5열 정렬 — 품목 좌, 출고·명세서·차이 우, 판정 중앙 */
+                th:nth-child(1), td:nth-child(1) { text-align: left; }
+                th:nth-child(2), td:nth-child(2),
+                th:nth-child(3), td:nth-child(3),
+                th:nth-child(4), td:nth-child(4) { text-align: right; }
+                th:nth-child(5), td:nth-child(5) { text-align: center; }
+
+                /* 특수거래처 카테고리 그룹 행 (colspan) — 전체 폭이므로 좌측 고정 */
+                td[colspan] { text-align: left !important; font-weight: 700; background: #f1f5f9 !important; }
+
+                /* A4 를 넘치면 2페이지로 이어지고, 머리 행이 각 페이지에 반복된다 */
+                thead { display: table-header-group; }
+                tr { page-break-inside: avoid; }
+            </style>
+        </head>
+        <body>
+            <div class="ob-print-head">
+                <div class="ob-print-title">${_hName || '거래처'} · ${y}년 ${m}월 출고 누계</div>
+                <div class="ob-print-meta">출력일: ${printedAt} &nbsp;|&nbsp; 허용 오차 ±${_tolerancePct}%${_startDate ? ' &nbsp;|&nbsp; 기능 시작일: ' + _startDate : ''}</div>
+            </div>
+            ${clone.innerHTML}
+        </body>
+        </html>`);
+        win.document.close();
+        win.focus();
+        setTimeout(() => { win.print(); win.close(); }, 500);
     };
 
     // 내부 함수 노출 (테스트·후속 태스크용). outbound-qty.js 의 _obQtyInternals 와 동일한 방식.
