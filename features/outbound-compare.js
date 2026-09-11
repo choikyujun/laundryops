@@ -16,13 +16,21 @@
     // Lucide 스프라이트 아이콘 헬퍼
     const ico = (name, lg) => `<svg class="icon${lg ? ' icon-lg' : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
+    // ── 출고 대조 기능 사용 거래처 판정 — 이 판정의 단일 출처 ──
+    // 정액제(fixed)는 수량이 금액에 영향을 주지 않아 대조 의미가 없다.
+    // outbound-qty.js 등 다른 기능은 window._obCompareUtils.isOutboundEnabled 로 재사용한다.
+    // 판정을 두 벌로 관리하지 말 것.
+    function _isOutboundEnabled(hData) {
+        return !!(hData && hData.use_outbound_input && hData.contract_type !== 'fixed');
+    }
+
     // ── 진입점: loadHotelDashboard 끝에서 호출 ──────────────
     window.loadOutboundSection = async function (hData) {
         const section = document.getElementById('outboundCompareSection');
         if (!section) return;
 
-        // 정액제는 대조 섹션 미표시
-        if (!hData.use_outbound_input || hData.contract_type === 'fixed') {
+        // 정액제는 대조 섹션 미표시 (_isOutboundEnabled 가 단일 판정)
+        if (!_isOutboundEnabled(hData)) {
             section.style.display = 'none';
             return;
         }
@@ -698,6 +706,17 @@
     // invoice-compare.js에서 재사용. 중복 구현 금지.
     window._obCompareUtils = {
         confirmStatus: _confirmStatus,
+        // 출고 대조 사용 거래처 판정 — outbound-qty.js 가 재사용한다
+        isOutboundEnabled: _isOutboundEnabled,
+        // 허용 오차 판정 — 판정식의 단일 출처. outbound-qty.js 가 재사용한다.
+        // _tolerancePct 를 임시 세팅 후 동기 호출하므로 안전(buildDetailTable 과 동일 패턴).
+        diffCalc: function (obQty, invQty, tolerancePct) {
+            const savedTol = _tolerancePct;
+            _tolerancePct = tolerancePct != null ? tolerancePct : 5;
+            const r = _diffCalc(obQty, invQty);
+            _tolerancePct = savedTol;
+            return r;
+        },
         // tolerancePct·isSpecial을 임시 세팅 후 동기 호출하므로 안전
         buildDetailTable: function (ob, inv, obItemMap, invItemMap, priceItems, tolerancePct, isSpecial) {
             const savedTol = _tolerancePct, savedSpec = _isSpecial;
