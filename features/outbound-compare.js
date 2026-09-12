@@ -180,7 +180,15 @@
         invoices.forEach(inv => pairs.push({ obs: obsByInv[inv.id] || [], inv, sortKey: inv.date }));
         // 아직 명세서가 붙지 않은 출고 = "세탁 대기" 행
         pendingObs.forEach(ob => pairs.push({ obs: [ob], inv: null, sortKey: ob.date }));
-        pairs.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+        // 최신 날짜가 위로 (내림차순). 관리자 명세서 목록(app_v38.js:4739 date desc)과 같은 방향.
+        // 2차 기준: 같은 날짜면 세탁 대기(명세서 없음)를 위에 둔다 — 목록 맨 위가
+        // "아직 처리되지 않은 것"이 되도록. 명세서 유무는 2진값이고, 같은 날짜에
+        // 명세서 2건·출고 2건은 각각 유니크 제약으로 생길 수 없어 이 두 단계로
+        // 순서가 완전히 결정된다(정렬 안정성에 기대지 않는다).
+        pairs.sort((a, b) => {
+            if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1;
+            return (a.inv ? 1 : 0) - (b.inv ? 1 : 0);
+        });
 
         // 7. 월 누계 집계
         //    대조 완료 = "출고가 묶인 명세서". 그 명세서의 품목과 묶인 출고 전부를 더한다.
