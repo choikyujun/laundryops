@@ -155,8 +155,8 @@
       }, 100);
   };
 </script>
-<link rel="stylesheet" href="style.css?v=20260911_3">
-<link rel="stylesheet" href="features/login-guide.css?v=20261010_1">
+<link rel="stylesheet" href="style.css?v=20261010_1">
+<link rel="stylesheet" href="features/login-guide.css?v=20261010_2">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
 </head>
 <body>
@@ -240,26 +240,6 @@
 </style>
 
 <div id="loginView" class="view active" style="padding:0;">
-  <!-- 모바일: 상단 갤러리 -->
-  <!-- 모바일 전용: 주요기능 요약 배너 -->
-  <div id="lp-mobile-top" style="display:none; padding:12px 16px 0 16px;">
-    <div style="background:#3D5470; border-radius:10px; padding:8px 10px;">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-        <div style="border-left:3px solid #60A5FA; border-radius:5px; padding:5px 8px; background:rgba(255,255,255,0.05);">
-          <div style="font-size:10.5px; font-weight:600; color:#F1F5F9;"><svg class="icon" aria-hidden="true" style="color:#60A5FA"><use href="#i-file"/></svg> 거래명세서 자동 발송</div>
-        </div>
-        <div style="border-left:3px solid #34D399; border-radius:5px; padding:5px 8px; background:rgba(255,255,255,0.05);">
-          <div style="font-size:10.5px; font-weight:600; color:#F1F5F9;"><svg class="icon" aria-hidden="true" style="color:#34D399"><use href="#i-bar-chart-2"/></svg> 월정산 자동 생성</div>
-        </div>
-        <div style="border-left:3px solid #F59E0B; border-radius:5px; padding:5px 8px; background:rgba(255,255,255,0.05);">
-          <div style="font-size:10.5px; font-weight:600; color:#F1F5F9;"><svg class="icon" aria-hidden="true" style="color:#F59E0B"><use href="#i-trending-up"/></svg> 실시간 매출 대시보드</div>
-        </div>
-        <div style="border-left:3px solid #A78BFA; border-radius:5px; padding:5px 8px; background:rgba(255,255,255,0.05);">
-          <div style="font-size:10.5px; font-weight:600; color:#F1F5F9;"><svg class="icon" aria-hidden="true" style="color:#A78BFA"><use href="#i-link"/></svg> 3자 통합 관리</div>
-        </div>
-      </div>
-    </div>
-  </div>
   <!-- 데스크탑: 좌패널 + 로그인 + 우패널 -->
   <div id="loginPageWrapper" style="display:flex; align-items:stretch; justify-content:center; gap:24px; padding:40px 20px;">
 
@@ -302,6 +282,11 @@
         아이디 저장
       </label>
       <button class="btn btn-save" style="width:100%; padding:14px; cursor: pointer;" onclick="window.login()">로그인</button>
+      <!-- 모바일 이용가이드 진입 (1157px 이하에서만 표시 / features/login-guide.js) -->
+      <button type="button" class="lg-tour-btn" id="lgTourOpen">
+        <span class="lg-tour-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+        <span><b>처음이신가요? 1분 둘러보기</b><span class="lg-tour-sub">명세서 발행부터 월정산까지</span></span>
+      </button>
       <div id="loginDebugArea" style="display:none; margin-top:10px; font-size:12px; color:red; white-space:pre-wrap; border:1px solid #ccc; padding:5px; border-radius:4px;">대기 중...</div>
       <button class="btn btn-neutral" style="width:100%; margin-top:10px; padding:13px; cursor: pointer; background:#eff6ff; color:var(--primary); border:1.5px solid #93c5fd; font-weight:700; font-size:14px;" onclick="openRegisterModal()">세탁공장 회원가입 · 3개월 무료로 시작</button>
       <div style="text-align:center; margin-top:15px;">
@@ -331,8 +316,8 @@
               <div class="lg-row"><span>듀벳커버</span><span class="lg-qty lg-num" data-q="18">0</span></div>
               <div class="lg-row"><span>수건</span><span class="lg-qty lg-num" data-q="120">0</span></div>
             </div>
-            <div class="lg-tot"><span>합계</span><span class="lg-num" id="lgS1tot">0원</span></div>
-            <div class="lg-btn" id="lgS1btn">발행하기</div>
+            <div class="lg-tot"><span>합계</span><span class="lg-num" data-lg="s1tot">0원</span></div>
+            <div class="lg-btn" data-lg="s1btn">발행하기</div>
           </div></div>
         </section>
 
@@ -342,8 +327,8 @@
           <h2>공장 전체 명세서를 한눈에</h2>
           <p class="lg-sub">현장에서 발행한 명세서가 실시간으로 모입니다</p>
           <div class="lg-frag"><div class="lg-card">
-            <div class="lg-ct"><b>오늘 발행</b><span class="lg-num" id="lgS2sum">0건 · 0원</span></div>
-            <div class="lg-list" id="lgS2list"></div>
+            <div class="lg-ct"><b>오늘 발행</b><span class="lg-num" data-lg="s2sum">0건 · 0원</span></div>
+            <div class="lg-list" data-lg="s2list"></div>
           </div></div>
         </section>
 
@@ -354,8 +339,8 @@
           <p class="lg-sub">거래처별 정산 명세서를 한꺼번에 보냅니다</p>
           <div class="lg-frag"><div class="lg-card">
             <div class="lg-ct"><b>2026년 9월 정산</b><span>VAT 포함</span></div>
-            <div id="lgS3list"></div>
-            <div class="lg-btn" id="lgS3btn">4곳 발송</div>
+            <div data-lg="s3list"></div>
+            <div class="lg-btn" data-lg="s3btn">4곳 발송</div>
           </div></div>
         </section>
 
@@ -367,7 +352,7 @@
           <div class="lg-frag" style="flex-direction:column; align-items:stretch;">
             <div class="lg-phone">
               <div class="lg-bar2"><span>9:41</span><span>LaundryOps</span></div>
-              <div class="lg-bubble" id="lgS4bub">
+              <div class="lg-bubble" data-lg="s4bub">
                 <div class="lg-bh">알림톡 도착</div>
                 <div class="lg-bb">
                   <b>[LaundryOPS] 월정산 명세서</b>
@@ -375,10 +360,10 @@
                   <span class="lg-num">2026-09-01~2026-09-30</span>
                   <span>월정산 명세서가 발송되었습니다.</span>
                 </div>
-                <div class="lg-bt" id="lgS4btn">명세서 확인</div>
+                <div class="lg-bt" data-lg="s4btn">명세서 확인</div>
               </div>
             </div>
-            <div class="lg-recv"><span>쎄고호텔 강남</span><span class="lg-st" id="lgS4st">수신완료</span></div>
+            <div class="lg-recv"><span>쎄고호텔 강남</span><span class="lg-st" data-lg="s4st">수신완료</span></div>
           </div>
         </section>
 
@@ -388,9 +373,9 @@
           <h2>숫자로 보는 우리 공장</h2>
           <p class="lg-sub cta">지금 가입하면 3개월 무료</p>
           <div class="lg-frag"><div class="lg-card">
-            <div class="lg-ct"><b>9월 매출</b><span class="lg-delta" id="lgS5d">전월 대비 +4.5%</span></div>
-            <div class="lg-big" id="lgS5big">0<small>원</small></div>
-            <div class="lg-chart" id="lgS5chart"><i></i><i></i><i></i><i></i><i></i><i class="last"></i></div>
+            <div class="lg-ct"><b>9월 매출</b><span class="lg-delta" data-lg="s5d">전월 대비 +4.5%</span></div>
+            <div class="lg-big" data-lg="s5big">0<small>원</small></div>
+            <div class="lg-chart" data-lg="s5chart"><i></i><i></i><i></i><i></i><i></i><i class="last"></i></div>
             <div class="lg-axis"><span>4월</span><span>5월</span><span>6월</span><span>7월</span><span>8월</span><span>9월</span></div>
           </div></div>
         </section>
@@ -1513,7 +1498,7 @@
   <script src="features/hotel-inactive-at.js?v=20260802_1"></script>
   <script src="features/dash-stats-fix.js?v=20260802_1"></script>
   <script src="features/outbound-qty.js?v=20260911_7"></script>
-  <script src="features/login-guide.js?v=20261010_2"></script>
+  <script src="features/login-guide.js?v=20261010_3"></script>
   <script>
   (function(){
     function _syncHotelBoxes(){

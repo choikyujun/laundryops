@@ -2,7 +2,7 @@
 *.md
 
 # ── 내부 자료 ───────────────────────────────────────
-assets/login-guide/login-guide-mockup.html
+assets/login-guide/*mockup*.html
 
 # ── 서버·운영 소스 (브라우저가 불러오지 않음) ────────
 supabase/

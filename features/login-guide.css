@@ -29,10 +29,12 @@
 }
 
 /* ── 우측: 앱 화면 가이드 ────────────────────────────────────── */
+#lp-side-right, #lgTour {
+  --lg-num: "SF Mono", "Roboto Mono", ui-monospace, Menlo, monospace;
+}
 #lp-side-right {
   padding: 32px 22px 18px;
   gap: 0;
-  --lg-num: "SF Mono", "Roboto Mono", ui-monospace, Menlo, monospace;
 }
 
 /* 진행 표시 */
@@ -176,4 +178,129 @@
 /* ── 모션 최소화 설정 ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .lg-scene, .lg-bubble, .lg-li, .lg-qty, .lg-btn, .lg-badge, .lg-delta, .lg-st, .lg-bt, .lg-chk { transition: none !important; }
+}
+
+
+/* ============================================================
+   모바일 "1분 둘러보기" — 버튼 + 스토리 오버레이
+   2026-10-10. 기준: assets/login-guide/mobile-mockup.html 1번(스토리형)
+   데스크톱(1158px 이상) 로그인 화면 동작에는 영향 없음.
+   ============================================================ */
+
+/* ── 로그인 버튼 아래 둘러보기 버튼 (1157px 이하에서만) ────── */
+.lg-tour-btn { display: none; }
+
+@media (max-width: 1157px) {
+  .lg-tour-btn {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; margin-top: 10px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    font-family: inherit; color: inherit; text-align: left; cursor: pointer;
+  }
+  .lg-tour-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+.lg-tour-btn .lg-tour-play {
+  width: 38px; height: 38px; border-radius: 50%; background: #2E4260;
+  display: flex; align-items: center; justify-content: center; flex: none;
+  animation: lgTourPulse 2.4s ease-in-out infinite;
+}
+.lg-tour-btn .lg-tour-play svg { width: 16px; height: 16px; fill: #fff; margin-left: 2px; }
+.lg-tour-btn b { display: block; font-size: 14px; font-weight: 700; color: #1e293b; }
+.lg-tour-btn span.lg-tour-sub { display: block; font-size: 12px; color: var(--secondary); margin-top: 1px; }
+@keyframes lgTourPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,168,232,0.35); }
+  50%      { box-shadow: 0 0 0 7px rgba(0,168,232,0); }
+}
+
+/* ── 스토리 오버레이 ─────────────────────────────────────── */
+#lgTour {
+  position: fixed; inset: 0; z-index: 10000;
+  background: #0b1320; overscroll-behavior: contain;
+}
+#lgTour[hidden] { display: none !important; }
+.lgt-frame {
+  position: relative; height: 100%; width: 100%;
+  max-width: 460px; margin: 0 auto; overflow: hidden; background: #0b1320;
+}
+.lgt-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.lgt-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg,
+    rgba(11,19,32,0.45) 0%, rgba(11,19,32,0) 18%, rgba(11,19,32,0) 34%,
+    rgba(20,32,52,0.88) 56%, rgba(30,45,70,0.97) 100%);
+}
+.lgt-bars {
+  position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px; right: 14px; z-index: 3;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+}
+.lgt-bars i { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.3); overflow: hidden; display: block; }
+.lgt-bars i b { display: block; height: 100%; width: 0; background: #fff; }
+.lgt-who {
+  position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 16px); left: 16px; z-index: 3;
+  font-size: 12px; font-weight: 600; color: #fff; opacity: 0.9;
+}
+.lgt-close {
+  position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 8px); right: 10px; z-index: 5;
+  width: 40px; height: 40px; border: 0; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.lgt-close svg { width: 22px; height: 22px; stroke: #fff; }
+.lgt-close:focus-visible { outline: 2px solid #fff; border-radius: 8px; }
+.lgt-zone {
+  position: absolute; top: 90px; bottom: 0; z-index: 2;
+  border: 0; background: transparent; cursor: pointer; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.lgt-zone:focus-visible { outline: 2px solid rgba(255,255,255,0.6); outline-offset: -4px; }
+.lgt-prev { left: 0; width: 35%; }
+.lgt-next { right: 0; width: 65%; }
+
+.lgt-stack {
+  position: absolute; left: 16px; right: 16px; bottom: max(22px, env(safe-area-inset-bottom)); z-index: 1;
+  height: 430px;
+}
+/* 데스크톱 패널에서 복제해 온 장면을 모바일 스토리용으로 재배치 */
+#lgTour .lg-scene { position: absolute; inset: auto 0 0 0; }
+#lgTour .lg-scene h2 { font-size: 21px; line-height: 1.3; margin: 4px 0 2px; }
+#lgTour .lg-eyebrow { font-size: 12px; color: #7cc8f0; }
+#lgTour .lg-sub { font-size: 13px; color: #c3cfdf; }
+#lgTour .lg-sub.cta { color: #7cc8f0; }
+#lgTour .lg-frag { flex: none; margin-top: 12px; }
+#lgTour .lg-card { box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 10px 24px rgba(0,0,0,0.3); }
+#lgTour .lg-phone { border-color: rgba(255,255,255,0.18); }
+
+/* 마지막 화면 */
+.lgt-end {
+  position: absolute; inset: 0; z-index: 6; display: none;
+  flex-direction: column; justify-content: flex-end; gap: 10px;
+  padding: 0 20px max(34px, env(safe-area-inset-bottom));
+  background: rgba(15,25,42,0.92);
+}
+.lgt-end.on { display: flex; }
+.lgt-end h3 { margin: 0 0 4px; color: #fff; font-size: 22px; line-height: 1.35; font-weight: 700; }
+.lgt-end p { margin: 0 0 10px; color: #c3cfdf; font-size: 13.5px; line-height: 1.6; }
+.lgt-go {
+  height: 50px; border: 0; border-radius: 12px;
+  background: var(--accent); color: #fff; font: 700 15.5px 'Pretendard', sans-serif;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.lgt-replay {
+  height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.25);
+  background: transparent; color: #fff; font: 600 14px 'Pretendard', sans-serif; cursor: pointer;
+}
+.lgt-go:focus-visible, .lgt-replay:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* 스토리가 열려 있는 동안 뒤 화면 스크롤 차단 */
+body.lg-tour-open { overflow: hidden !important; }
+
+/* 화면이 짧을 때 카드가 잘리지 않도록 */
+@media (max-height: 700px) {
+  .lgt-stack { height: 380px; }
+  #lgTour .lg-scene h2 { font-size: 19px; }
+  #lgTour .lg-card { padding: 12px; gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-tour-btn .lg-tour-play { animation: none; }
+  #lgTour .lg-scene { transition: none !important; }
 }

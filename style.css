@@ -109,7 +109,6 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
   /* 로그인 박스 모바일 */
   #loginPageWrapper { flex-direction: column !important; padding: 12px 16px 16px !important; gap: 0 !important; }
   .login-box { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; padding: 24px 20px !important; margin: 0 !important; border-radius: 12px !important; align-self: auto !important; }
-  #lp-mobile-top { display: block !important; }
   #lp-side-left { display: none !important; }
   #lp-side-right { display: none !important; }
 

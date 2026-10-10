@@ -9,4 +9,4 @@ node_modules/
 supabase/.temp/
 
 # 로그인 이용가이드 디자인 시안 (내부 검토용 — 공개 배포 금지)
-assets/login-guide/login-guide-mockup.html
+assets/login-guide/*mockup*.html
