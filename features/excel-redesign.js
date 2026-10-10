@@ -66,7 +66,7 @@
     pL.alignment = { vertical: 'middle', horizontal: 'left' };
     pL.border = { bottom: { style: 'medium', color: C.green } };
     const bR = ws.getCell(2, mid + 1);
-    bR.value = 'CEGO · 씨고 세탁고수';
+    bR.value = 'CEGO · 쎄고 세탁고수';
     bR.font  = { name: FONT, bold: true, size: 9.5, color: C.green };
     bR.alignment = { vertical: 'middle', horizontal: 'right' };
     bR.border = { bottom: { style: 'medium', color: C.green } };

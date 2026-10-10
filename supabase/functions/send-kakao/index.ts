@@ -4,8 +4,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const SOLAPI_API_KEY = Deno.env.get("SOLAPI_API_KEY")!;       // NCSTYI3KU6TCNIJI
-const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET")!; // UP8BDGHQHMXG9XST8QHDI6URYK0NHJMP
+const SOLAPI_API_KEY = Deno.env.get("SOLAPI_API_KEY")!;
+const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET")!;
 const SENDER_PHONE = Deno.env.get("SENDER_PHONE") ?? "01051041648";
 
 const KAKAO_PF_ID = "KA01PF260422153127223YPBcJKYZEJU";

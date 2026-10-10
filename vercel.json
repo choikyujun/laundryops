@@ -1,4 +1,14 @@
 {
+  "redirects": [
+    { "source": "/(.*).md", "destination": "/", "permanent": false },
+    { "source": "/supabase/(.*)", "destination": "/", "permanent": false },
+    { "source": "/(.*).sql", "destination": "/", "permanent": false },
+    { "source": "/(.*).mjs", "destination": "/", "permanent": false },
+    { "source": "/(.*).py", "destination": "/", "permanent": false },
+    { "source": "/_app_v38.js", "destination": "/", "permanent": false },
+    { "source": "/(.*)v38.html", "destination": "/", "permanent": false },
+    { "source": "/preview_images.js", "destination": "/", "permanent": false }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
