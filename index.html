@@ -156,6 +156,7 @@
   };
 </script>
 <link rel="stylesheet" href="style.css?v=20260911_3">
+<link rel="stylesheet" href="features/login-guide.css?v=20261010_1">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
 </head>
 <body>
@@ -219,14 +220,6 @@
     </div>
   </div>
 
-  <!-- 라이트박스 오버레이 -->
-<div id="previewLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:9999; align-items:center; justify-content:center; flex-direction:column;" onclick="closeLightbox()">
-  <div style="position:relative; max-width:90vw; max-height:82vh;">
-    <img id="lightboxImg" src="" alt="" style="max-width:90vw; max-height:78vh; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.6); display:block;">
-    <div id="lightboxCaption" style="text-align:center; color:#fff; font-size:14px; margin-top:10px; font-weight:600;"></div>
-  </div>
-  <div style="color:#ccc; font-size:12px; margin-top:8px;">클릭하면 닫힙니다</div>
-</div>
 
 <style>
 /* ===== 로그인 페이지 사이드패널 ===== */
@@ -237,42 +230,6 @@
   flex-direction: column;
   gap: 10px;
 }
-.lp-side-logo { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
-.lp-side-dot { width:8px; height:8px; border-radius:50%; background:#60A5FA; flex-shrink:0; }
-.lp-side-title { font-size:11px; font-weight:600; color:#94A3B8; letter-spacing:0.08em; text-transform:uppercase; }
-.lp-side-desc { font-size:11.5px; color:#CBD5E1; line-height:1.6; margin-bottom:4px; }
-.lp-feature-list { display:flex; flex-direction:column; gap:7px; }
-.lp-feature-item {
-  display:flex; align-items:flex-start; gap:11px;
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.07);
-  border-radius:10px; padding:11px 13px;
-  border-left-width: 3px;
-}
-.lp-feature-icon { width:26px; height:26px; border-radius:6px; background:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.lp-feature-icon svg { width:13px; height:13px; }
-.lp-feature-name { font-size:11.5px; font-weight:600; color:#F1F5F9; margin-bottom:2px; }
-.lp-feature-sub { font-size:10px; color:#94A3B8; line-height:1.4; }
-.lp-divider { height:1px; background:rgba(255,255,255,0.08); margin:6px 0; }
-.lp-badge-row { display:flex; gap:5px; flex-wrap:wrap; }
-.lp-badge { font-size:10px; font-weight:500; background:rgba(96,165,250,0.1); color:#93C5FD; border:1px solid rgba(96,165,250,0.25); border-radius:20px; padding:3px 10px; }
-.lp-testimonial {
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.07);
-  border-radius:10px; padding:12px 14px;
-  border-left-width:3px;
-  border-left-style:solid;
-}
-.lp-testimonial-text { font-size:11px; color:#CBD5E1; line-height:1.7; font-style:italic; margin-bottom:5px; }
-.lp-testimonial-cite { font-size:10px; color:#94A3B8; font-weight:600; }
-.lp-stat-row { display:flex; gap:7px; }
-.lp-stat-box { flex:1; background:rgba(255,255,255,0.04); border-radius:8px; padding:10px 5px; text-align:center; border:1px solid rgba(255,255,255,0.08); }
-.lp-stat-num { font-size:15px; font-weight:700; color:#F1F5F9; }
-.lp-stat-label { font-size:9px; color:#94A3B8; font-weight:600; margin-top:3px; letter-spacing:0.03em; }
-.lp-contact-box { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:13px; text-align:center; }
-.lp-contact-label { font-size:10px; color:#94A3B8; font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.06em; }
-.lp-contact-num { font-size:15px; color:#F1F5F9; font-weight:700; letter-spacing:0.03em; }
-.lp-contact-kakao { font-size:10px; color:#94A3B8; font-weight:600; margin-top:3px; }
 
 /* 모바일: 사이드패널 숨기기 */
 @media (max-width: 768px) {
@@ -306,40 +263,11 @@
   <!-- 데스크탑: 좌패널 + 로그인 + 우패널 -->
   <div id="loginPageWrapper" style="display:flex; align-items:stretch; justify-content:center; gap:24px; padding:40px 20px;">
 
-    <!-- 좌측 사이드패널: 주요 기능 -->
-    <div id="lp-side-left" class="lp-side" style="width:260px; flex:none; border-radius:14px;">
-      <div>
-        <div class="lp-side-logo"><div class="lp-side-dot"></div><span class="lp-side-title">주요 기능</span></div>
-        <p class="lp-side-desc" style="margin-top:6px;">세탁공장 업무를 자동화하는 스마트 정산 플랫폼</p>
-      </div>
-      <div class="lp-feature-list">
-        <div class="lp-feature-item" style="border-left-color:#60A5FA;">
-          <div class="lp-feature-icon"><svg viewBox="0 0 15 15" fill="none"><rect x="2" y="1" width="11" height="13" rx="1.5" stroke="#60A5FA" stroke-width="1.3"/><line x1="4.5" y1="5" x2="10.5" y2="5" stroke="#60A5FA" stroke-width="1"/><line x1="4.5" y1="7.5" x2="10.5" y2="7.5" stroke="#60A5FA" stroke-width="1"/><line x1="4.5" y1="10" x2="8" y2="10" stroke="#60A5FA" stroke-width="1"/></svg></div>
-          <div><div class="lp-feature-name">거래명세서 자동 발송</div><div class="lp-feature-sub">클릭 한 번으로 호텔 담당자에게 즉시 전송</div></div>
-        </div>
-        <div class="lp-feature-item" style="border-left-color:#34D399;">
-          <div class="lp-feature-icon"><svg viewBox="0 0 15 15" fill="none"><rect x="1.5" y="1.5" width="12" height="12" rx="1.5" stroke="#34D399" stroke-width="1.3"/><path d="M4 11 L4 7.5 L7 5 L10 7 L11 11" stroke="#34D399" stroke-width="1.1" fill="none"/></svg></div>
-          <div><div class="lp-feature-name">월정산 자동 생성</div><div class="lp-feature-sub">한 달치 정산 내역 자동 취합 및 발송</div></div>
-        </div>
-        <div class="lp-feature-item" style="border-left-color:#F59E0B;">
-          <div class="lp-feature-icon"><svg viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="#F59E0B" stroke-width="1.3"/><path d="M7.5 4.5v3l2 2" stroke="#F59E0B" stroke-width="1.2" stroke-linecap="round"/></svg></div>
-          <div><div class="lp-feature-name">실시간 매출 대시보드</div><div class="lp-feature-sub">거래처별·월별 매출을 한눈에 확인</div></div>
-        </div>
-        <div class="lp-feature-item" style="border-left-color:#A78BFA;">
-          <div class="lp-feature-icon"><svg viewBox="0 0 15 15" fill="none"><circle cx="4" cy="7.5" r="2" stroke="#A78BFA" stroke-width="1.2"/><circle cx="11" cy="4" r="2" stroke="#A78BFA" stroke-width="1.2"/><circle cx="11" cy="11" r="2" stroke="#A78BFA" stroke-width="1.2"/><line x1="6" y1="6.8" x2="9" y2="4.8" stroke="#A78BFA" stroke-width="1"/><line x1="6" y1="8.2" x2="9" y2="10.2" stroke="#A78BFA" stroke-width="1"/></svg></div>
-          <div><div class="lp-feature-name">3자 통합 관리</div><div class="lp-feature-sub">세탁공장 · 현장 직원 · 호텔이 하나의 시스템</div></div>
-        </div>
-        <div class="lp-feature-item" style="border-left-color:#FB7185;">
-          <div class="lp-feature-icon"><svg viewBox="0 0 15 15" fill="none"><path d="M2 11.5 L5.5 8 L7.5 10.5 L10.5 5.5 L13 7.5" stroke="#FB7185" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div><div class="lp-feature-name">분쟁 방지 데이터 관리</div><div class="lp-feature-sub">모든 거래 기록을 클라우드에 자동 저장</div></div>
-        </div>
-      </div>
-      <div class="lp-divider"></div>
-      <div class="lp-badge-row">
-        <span class="lp-badge">종이 명세서 0장</span>
-        <span class="lp-badge">인쇄비 절감</span>
-        <span class="lp-badge">업무시간 90% 단축</span>
-      </div>
+    <!-- 좌측 패널: 현장 영상 (소스는 features/login-guide.js가 1158px 이상에서만 주입) -->
+    <div id="lp-side-left" class="lp-side" style="width:304px; flex:none; border-radius:14px;">
+      <video id="lgVideo" muted loop playsinline autoplay preload="none"
+             data-poster="assets/login-guide/login-guide-poster.jpg"
+             aria-label="LaundryOps 이용가이드 영상 (무음 반복)"></video>
     </div>
 
     <!-- 기존 로그인 박스 (변경 없음) -->
@@ -375,42 +303,101 @@
       </label>
       <button class="btn btn-save" style="width:100%; padding:14px; cursor: pointer;" onclick="window.login()">로그인</button>
       <div id="loginDebugArea" style="display:none; margin-top:10px; font-size:12px; color:red; white-space:pre-wrap; border:1px solid #ccc; padding:5px; border-radius:4px;">대기 중...</div>
-      <button class="btn btn-neutral" style="width:100%; margin-top:10px; padding:10px; cursor: pointer; background:none; color:var(--secondary); border:1px solid var(--border);" onclick="openRegisterModal()">세탁공장 회원가입 신청</button>
+      <button class="btn btn-neutral" style="width:100%; margin-top:10px; padding:13px; cursor: pointer; background:#eff6ff; color:var(--primary); border:1.5px solid #93c5fd; font-weight:700; font-size:14px;" onclick="openRegisterModal()">세탁공장 회원가입 · 3개월 무료로 시작</button>
       <div style="text-align:center; margin-top:15px;">
         <a href="#" onclick="event.preventDefault(); window.openFindPwModal();" style="color:#64748b; font-size:13px; text-decoration:underline;">비밀번호를 잊으셨나요?</a>
       </div>
     </div><!-- /login-box -->
 
-    <!-- 우측 사이드패널: 후기 + 혜택 -->
+    <!-- 우측 패널: 앱 화면 이용가이드 (장면 전환은 features/login-guide.js) -->
     <div id="lp-side-right" class="lp-side" style="width:260px; flex:none; border-radius:14px;">
-      <div>
-        <div class="lp-side-logo"><div class="lp-side-dot"></div><span class="lp-side-title">실제 후기</span></div>
-        <p class="lp-side-desc" style="margin-top:6px;">전국 세탁공장 대표님들의 생생한 사용 경험</p>
+      <div class="lg-steps">
+        <span class="lg-stepnum" id="lgStepNum">1 / 5</span>
+        <span class="lg-bar" id="lgBar"><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i></span>
       </div>
-      <div class="lp-testimonial" style="border-left-color:#60A5FA;">
-        <div class="lp-testimonial-text">"월말 정산 작업을 하루종일 했었는데, 30분으로 기가막히게 줄었어요."</div>
-        <div class="lp-testimonial-cite">— 경기도 세탁공장 대표님</div>
+
+      <div class="lg-scenes" id="lgScenes">
+
+        <!-- 장면 1: 명세서 발행 -->
+        <section class="lg-scene">
+          <span class="lg-eyebrow">현장직원</span>
+          <h2>현장에서 바로 명세서 발행</h2>
+          <p class="lg-sub">거래처를 고르고 수량만 입력하면 끝납니다</p>
+          <div class="lg-frag"><div class="lg-card">
+            <div class="lg-ct"><b>일일 명세서</b><span class="lg-num">10.10</span></div>
+            <div class="lg-sel"><span>씨고호텔 강남</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+            <div class="lg-rows">
+              <div class="lg-row"><span>시트 (대)</span><span class="lg-qty lg-num" data-q="42">0</span></div>
+              <div class="lg-row"><span>듀벳커버</span><span class="lg-qty lg-num" data-q="18">0</span></div>
+              <div class="lg-row"><span>수건</span><span class="lg-qty lg-num" data-q="120">0</span></div>
+            </div>
+            <div class="lg-tot"><span>합계</span><span class="lg-num" id="lgS1tot">0원</span></div>
+            <div class="lg-btn" id="lgS1btn">발행하기</div>
+          </div></div>
+        </section>
+
+        <!-- 장면 2: 명세서 목록 -->
+        <section class="lg-scene">
+          <span class="lg-eyebrow">공장 대표</span>
+          <h2>공장 전체 명세서를 한눈에</h2>
+          <p class="lg-sub">현장에서 발행한 명세서가 실시간으로 모입니다</p>
+          <div class="lg-frag"><div class="lg-card">
+            <div class="lg-ct"><b>오늘 발행</b><span class="lg-num" id="lgS2sum">0건 · 0원</span></div>
+            <div class="lg-list" id="lgS2list"></div>
+          </div></div>
+        </section>
+
+        <!-- 장면 3: 월정산 발송 -->
+        <section class="lg-scene">
+          <span class="lg-eyebrow">공장 대표</span>
+          <h2>월말 정산은 클릭 한 번</h2>
+          <p class="lg-sub">거래처별 정산 명세서를 한꺼번에 보냅니다</p>
+          <div class="lg-frag"><div class="lg-card">
+            <div class="lg-ct"><b>2026년 9월 정산</b><span>VAT 포함</span></div>
+            <div id="lgS3list"></div>
+            <div class="lg-btn" id="lgS3btn">4곳 발송</div>
+          </div></div>
+        </section>
+
+        <!-- 장면 4: 거래처 알림톡 수신 ('월정산 명세서 수신' 템플릿 변수 기준) -->
+        <section class="lg-scene">
+          <span class="lg-eyebrow">거래처</span>
+          <h2>거래처는 카카오톡으로 받습니다</h2>
+          <p class="lg-sub">링크 하나로 명세서 확인까지</p>
+          <div class="lg-frag" style="flex-direction:column; align-items:stretch;">
+            <div class="lg-phone">
+              <div class="lg-bar2"><span>9:41</span><span>LaundryOps</span></div>
+              <div class="lg-bubble" id="lgS4bub">
+                <div class="lg-bh">알림톡 도착</div>
+                <div class="lg-bb">
+                  <b>[LaundryOPS] 월정산 명세서</b>
+                  <span>씨고세탁 - 씨고호텔 강남</span>
+                  <span class="lg-num">2026-09-01~2026-09-30</span>
+                  <span>월정산 명세서가 발송되었습니다.</span>
+                </div>
+                <div class="lg-bt" id="lgS4btn">명세서 확인</div>
+              </div>
+            </div>
+            <div class="lg-recv"><span>씨고호텔 강남</span><span class="lg-st" id="lgS4st">수신완료</span></div>
+          </div>
+        </section>
+
+        <!-- 장면 5: 매출 -->
+        <section class="lg-scene">
+          <span class="lg-eyebrow">공장 대표</span>
+          <h2>숫자로 보는 우리 공장</h2>
+          <p class="lg-sub cta">지금 가입하면 3개월 무료</p>
+          <div class="lg-frag"><div class="lg-card">
+            <div class="lg-ct"><b>9월 매출</b><span class="lg-delta" id="lgS5d">전월 대비 +4.5%</span></div>
+            <div class="lg-big" id="lgS5big">0<small>원</small></div>
+            <div class="lg-chart" id="lgS5chart"><i></i><i></i><i></i><i></i><i></i><i class="last"></i></div>
+            <div class="lg-axis"><span>4월</span><span>5월</span><span>6월</span><span>7월</span><span>8월</span><span>9월</span></div>
+          </div></div>
+        </section>
+
       </div>
-      <div class="lp-testimonial" style="border-left-color:#34D399;">
-        <div class="lp-testimonial-text">"호텔 담당자한테 꾸깃꾸깃한 종이 명세서 끼워 보내던 게 없어졌어요."</div>
-        <div class="lp-testimonial-cite">— 부산 소재 세탁공장 대표님</div>
-      </div>
-      <div class="lp-testimonial" style="border-left-color:#F59E0B;">
-        <div class="lp-testimonial-text">"대시보드 켜면 전체 매출이 바로 나오니까 진짜 세상 편해졌습니다."</div>
-        <div class="lp-testimonial-cite">— 인천 세탁공장 대표님</div>
-      </div>
-      <div class="lp-divider"></div>
-      <div class="lp-stat-row">
-        <div class="lp-stat-box"><div class="lp-stat-num">3개월</div><div class="lp-stat-label">무료 체험</div></div>
-        <div class="lp-stat-box"><div class="lp-stat-num">0원</div><div class="lp-stat-label">초기 세팅비</div></div>
-        <div class="lp-stat-box"><div class="lp-stat-num">24시간</div><div class="lp-stat-label">언제든 이용</div></div>
-      </div>
-      <div class="lp-divider"></div>
-      <div class="lp-contact-box">
-        <div class="lp-contact-label">문의</div>
-        <div class="lp-contact-num">010-5104-1648</div>
-        <div class="lp-contact-kakao">카카오톡 채널 상담 가능</div>
-      </div>
+
+      <div class="lg-contact">문의 <b>010-5104-1648</b> · 카카오톡 채널 상담 가능</div>
     </div>
 
   </div><!-- /loginPageWrapper -->
@@ -1465,7 +1452,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
   <script src="billing_logic.js?v=20260829_1"></script>
-  <script src="preview_images.js?v=20260529_1"></script>
   <!-- ====================================================
        src/ 모듈 분리 버전 (app_v38.js 대체)
        로드 순서: db/client → utils → components → db/realtime → db/queries → auth → features → views
@@ -1527,6 +1513,7 @@
   <script src="features/hotel-inactive-at.js?v=20260802_1"></script>
   <script src="features/dash-stats-fix.js?v=20260802_1"></script>
   <script src="features/outbound-qty.js?v=20260911_7"></script>
+  <script src="features/login-guide.js?v=20261010_1"></script>
   <script>
   (function(){
     function _syncHotelBoxes(){

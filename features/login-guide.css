@@ -1,0 +1,179 @@
+/* ============================================================
+   로그인 화면 이용가이드 — 좌: 현장 영상 / 우: 앱 화면 가이드
+   2026-10-10 신규. 기준: assets/login-guide/login-guide-mockup.html
+   색·글꼴은 시안 근사치 대신 실제 앱 토큰(style.css :root)과
+   기존 .lp-side 네이비 팔레트를 사용한다.
+   ============================================================ */
+
+/* ── 1157px 이하에서는 좌·우 패널을 숨긴다 ─────────────────────
+   3열이 들어가는 최소 폭 = 304 + 462 + 304 + gap 48 + padding 40 = 1158px.
+   (preview_images.js 제거로 사라진 app_v38.js applyLayout()의 역할을 대신한다) */
+@media (max-width: 1157px) {
+  #lp-side-left, #lp-side-right { display: none !important; }
+}
+
+/* 1158~1199px 구간은 폭 여유가 2px뿐이고, 윈도우/리눅스의 세로 스크롤바(약 15px)까지
+   감안하면 3열이 .app-container(overflow:hidden) 밖으로 밀린다.
+   이 구간에서만 wrapper의 gap·좌우 padding을 줄여 24px 여유를 만든다. */
+@media (min-width: 1158px) and (max-width: 1199px) {
+  #loginPageWrapper { gap: 16px !important; padding-left: 16px !important; padding-right: 16px !important; }
+}
+
+/* ── 좌측: 현장 영상 ─────────────────────────────────────────── */
+#lp-side-left { padding: 0; overflow: hidden; position: relative; }
+#lgVideo {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  background: #2E4260;
+}
+
+/* ── 우측: 앱 화면 가이드 ────────────────────────────────────── */
+#lp-side-right {
+  padding: 32px 22px 18px;
+  gap: 0;
+  --lg-num: "SF Mono", "Roboto Mono", ui-monospace, Menlo, monospace;
+}
+
+/* 진행 표시 */
+.lg-steps { display: flex; align-items: center; gap: 10px; }
+.lg-stepnum { font: 600 11px/1 var(--lg-num); color: #94A3B8; font-variant-numeric: tabular-nums; min-width: 30px; }
+.lg-bar { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.lg-bar i { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; display: block; }
+.lg-bar i b { display: block; height: 100%; width: 0; background: #60A5FA; }
+
+/* 장면 공통 */
+.lg-scenes { position: relative; flex: 1; margin-top: 20px; min-height: 0; }
+.lg-scene {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  opacity: 0; transition: opacity .55s ease; pointer-events: none;
+}
+.lg-scene.on { opacity: 1; }
+.lg-eyebrow { font-size: 11px; font-weight: 600; color: #60A5FA; letter-spacing: 0.02em; }
+.lg-scene h2 { font-size: 19px; line-height: 1.35; margin: 6px 0 4px; font-weight: 700; color: #F1F5F9; letter-spacing: -0.01em; }
+.lg-sub { font-size: 12.5px; line-height: 1.5; color: #CBD5E1; margin: 0; }
+.lg-sub.cta { color: #93C5FD; font-weight: 700; }
+.lg-frag { margin-top: 16px; flex: 1; display: flex; align-items: flex-start; min-height: 0; }
+
+/* 네이비 패널 위에 뜨는 흰 카드 */
+.lg-card {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.22);
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  color: #334155;
+}
+.lg-ct { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--secondary); }
+.lg-ct b { font-size: 13px; color: #1e293b; }
+.lg-num { font-family: var(--lg-num); font-variant-numeric: tabular-nums; }
+
+/* 하단 문의 (고정) */
+.lg-contact {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 12px; margin-top: 12px;
+  font-size: 10px; line-height: 1.5; font-weight: 600;
+  color: #94A3B8; text-align: center;
+}
+.lg-contact b { color: #F1F5F9; font-weight: 700; letter-spacing: 0.02em; }
+
+/* ── 장면 1: 명세서 발행 ─────────────────────────────────────── */
+.lg-sel {
+  height: 34px; border: 1px solid var(--border); border-radius: 6px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; font-size: 12.5px; background: #f8fafc;
+}
+.lg-sel svg { width: 14px; height: 14px; stroke: var(--secondary); flex: none; }
+.lg-rows { display: flex; flex-direction: column; }
+.lg-row { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.lg-qty {
+  min-width: 52px; height: 26px;
+  border: 1px solid var(--border); border-radius: 4px;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 8px; font-size: 12.5px; color: var(--secondary);
+  transition: border-color .2s, background .2s, color .2s;
+}
+.lg-qty.typing { border-color: var(--accent); background: #e8f7fe; color: #1e293b; }
+.lg-qty.done { color: #1e293b; }
+.lg-tot { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: #1e293b; }
+.lg-btn {
+  height: 38px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13.5px; font-weight: 600;
+  background: var(--accent); color: #fff;
+  transition: transform .15s, background .3s;
+}
+.lg-btn.press { transform: scale(.97); }
+.lg-btn.ok { background: var(--success); }
+.lg-btn svg { width: 15px; height: 15px; stroke: #fff; }
+
+/* ── 장면 2: 명세서 목록 ─────────────────────────────────────── */
+.lg-list { display: flex; flex-direction: column; }
+.lg-li {
+  display: grid; grid-template-columns: 38px 1fr auto; gap: 8px; align-items: center;
+  font-size: 12px; border-bottom: 1px solid var(--border);
+  max-height: 0; opacity: 0; overflow: hidden; padding-block: 0;
+  transition: max-height .45s ease, opacity .45s ease, padding .45s ease, background .8s;
+}
+.lg-li.show { max-height: 40px; opacity: 1; padding-block: 8px; }
+.lg-li.fresh { background: #e8f7fe; }
+.lg-li .t { color: var(--secondary); font-family: var(--lg-num); font-size: 11px; }
+.lg-li .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-li .a { text-align: right; }
+
+/* ── 장면 3: 월정산 발송 ─────────────────────────────────────── */
+.lg-chk {
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1.5px solid #cbd5e1; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s, border-color .2s;
+}
+.lg-chk svg { width: 11px; height: 11px; stroke: #fff; opacity: 0; }
+.lg-chk.on { background: var(--primary); border-color: var(--primary); }
+.lg-chk.on svg { opacity: 1; }
+.lg-mrow { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.lg-mrow .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-badge { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: var(--success); font-weight: 600; opacity: 0; transition: opacity .3s; }
+.lg-badge.on { opacity: 1; }
+
+/* ── 장면 4: 알림톡 ──────────────────────────────────────────── */
+.lg-phone { width: 200px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 10px; background: #b2c7d9; }
+.lg-bar2 { font: 600 9.5px/1 var(--lg-num); color: #3b4a5a; display: flex; justify-content: space-between; padding: 2px 6px 10px; }
+.lg-bubble {
+  background: #fff; border-radius: 10px; overflow: hidden;
+  font-size: 11px; line-height: 1.5;
+  transform: translateY(14px); opacity: 0;
+  transition: transform .5s ease, opacity .5s ease;
+}
+.lg-bubble.on { transform: none; opacity: 1; }
+.lg-bh { background: #FEE500; color: #191600; font-weight: 700; padding: 7px 10px; font-size: 10.5px; }
+.lg-bb { padding: 10px; color: #222; display: flex; flex-direction: column; gap: 4px; }
+.lg-bb b { font-size: 11.5px; }
+.lg-bt { margin: 0 10px 10px; border: 1px solid #e3e3e3; border-radius: 6px; text-align: center; padding: 7px 0; font-weight: 600; font-size: 11px; transition: background .2s; }
+.lg-bt.tap { background: #eef0f2; }
+.lg-recv {
+  margin-top: 12px; display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: #334155;
+}
+.lg-st { font-size: 10.5px; padding: 2px 7px; border-radius: 4px; background: #f1f5f9; color: var(--secondary); font-weight: 600; transition: background .3s, color .3s; }
+.lg-st.ok { background: #ecfdf5; color: var(--success); }
+
+/* ── 장면 5: 매출 ────────────────────────────────────────────── */
+.lg-big { font: 700 24px/1.1 var(--lg-num); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--primary); }
+.lg-big small { font: 600 12.5px 'Pretendard', sans-serif; margin-left: 2px; color: var(--secondary); }
+.lg-delta { font-size: 11px; color: var(--success); font-weight: 600; opacity: 0; transition: opacity .4s; }
+.lg-delta.on { opacity: 1; }
+.lg-chart { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; height: 118px; padding-top: 6px; border-bottom: 1px solid var(--border); }
+.lg-chart i { display: block; background: #cfe3f3; border-radius: 4px 4px 0 0; height: 0; }
+.lg-chart i.last { background: var(--primary); }
+.lg-axis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; font-size: 10.5px; color: var(--secondary); text-align: center; }
+
+/* ── 모션 최소화 설정 ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .lg-scene, .lg-bubble, .lg-li, .lg-qty, .lg-btn, .lg-badge, .lg-delta, .lg-st, .lg-bt, .lg-chk { transition: none !important; }
+}
