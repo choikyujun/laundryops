@@ -304,3 +304,54 @@ body.lg-tour-open { overflow: hidden !important; }
   .lg-tour-btn .lg-tour-play { animation: none; }
   #lgTour .lg-scene { transition: none !important; }
 }
+
+/* ============================================================
+   모바일(768px 이하) 로그인 화면 여백 정리 — 2026-10-10
+   갤럭시(삼성 인터넷) 실기기 기준. 데스크톱(769px 이상)에는 영향 없음.
+   인라인 style과 style.css의 !important 규칙을 덮어야 해서 !important를 쓴다.
+   ============================================================ */
+@media (max-width: 768px) {
+
+  /* 1. 상단 헤더: 글자 크기는 두고 위아래 빈 공간만 절반으로
+        (기존 padding 12px + h2 기본 margin 19.9px = 위아래 약 32px → 약 16px) */
+  .header { padding: 6px 16px !important; }
+  .header h2 { margin: 10px 0 !important; }
+
+  /* 3. 바깥 여백 */
+  .view { padding: 8px !important; }
+  #loginPageWrapper { padding: 6px 12px 12px !important; }
+  .login-box { padding: 18px 16px !important; }
+
+  /* 3. 카드 안쪽 간격 */
+  .login-box h3 { margin-bottom: 10px !important; }
+  .login-box > p { margin: -4px 0 8px 0 !important; }
+
+  /* 2. 안내 박스: 360px에서도 두 줄이 각각 한 줄에 들어가게 */
+  .login-box .login-hint {
+    padding: 9px 10px !important;
+    margin-bottom: 10px !important;
+    font-size: 12px !important;
+    line-height: 1.6 !important;
+    word-break: keep-all;
+    overflow-wrap: normal;
+  }
+
+  /* 3. 입력 요소 간격 — 손가락 터치 영역은 44px 이상 유지 */
+  #customDropdown { margin-bottom: 8px !important; }
+  #dropdownBtn { padding: 12px !important; }
+  .login-box input[type="text"],
+  .login-box input[type="password"] { margin: 6px 0 !important; padding: 13px 14px !important; }
+  .login-box label { margin: 0 0 8px 2px !important; }
+
+  /* style.css의 .btn { padding:6px 8px; font-size:10px } 가 로그인 화면 버튼까지
+     줄여버려 높이가 24px밖에 안 됐다. 로그인 박스 안에서만 되돌린다. */
+  .login-box .btn { padding: 13px !important; font-size: 15px !important; }
+  .login-box .btn.btn-neutral[onclick*="openRegisterModal"] { padding: 13px !important; font-size: 13.5px !important; }
+
+  /* 둘러보기 버튼 */
+  .lg-tour-btn { margin-top: 8px !important; padding: 10px 12px !important; }
+  .lg-tour-btn .lg-tour-play { width: 34px; height: 34px; }
+
+  /* 비밀번호 찾기 */
+  .login-box > div[style*="text-align:center"] { margin-top: 12px !important; }
+}
